@@ -20,7 +20,7 @@ private const val GPU_DRIVER_DIRECTORY = "gpu_drivers"
 private const val GPU_DRIVER_FILE_REDIRECT_DIR = "gpu/vk_file_redirect"
 private const val GPU_DRIVER_INSTALL_TEMP_DIR = "driver_temp"
 private const val GPU_DRIVER_META_FILE = "meta.json"
-private const val BUNDLED_PANVK_ASSET = "gpu_drivers/PanVK-G615-Strato-Mali-0.1.0-strato-dev.1.zip"
+private const val BUNDLED_PANVK_ASSET = "gpu_drivers/PanVK-G615-Strato-Mali-latest.zip"
 private const val TAG = "GPUDriverHelper"
 
 interface GpuDriverHelper {
@@ -53,23 +53,34 @@ interface GpuDriverHelper {
          */
         external fun forceMaxGpuClocks(enable : Boolean)
 
-        const val BUNDLED_PANVK_LABEL = "PanVK G615 Strato Mali-v0.1.0-strato-dev.1"
+        private const val BUNDLED_PANVK_NAME = "PanVK G615 Strato Mali"
 
         fun getSystemGpuName() : String? = getSystemDriverInfo()?.getOrNull(2)
 
-        /**
-         * Installs the bundled G615 PanVK package if it is not already present.
-         * Returns null when the build does not contain the bundled asset.
-         */
-        fun installBundledPanVk(context : Context) : GpuDriverInstallResult? {
-            if (getInstalledDrivers(context).values.any { it.label == BUNDLED_PANVK_LABEL })
-                return GpuDriverInstallResult.AlreadyInstalled
+        private fun findBundledPanVkLabel(context : Context) : String? =
+            getInstalledDrivers(context).values
+                .firstOrNull { it.name == BUNDLED_PANVK_NAME }
+                ?.label
 
-            return try {
+        /**
+         * Ensures the bundled G615 PanVK package is installed and returns the
+         * installed driver label. A fixed asset name lets CI roll the bundled
+         * PanVK version without changing Kotlin code for every driver build.
+         */
+        fun ensureBundledPanVk(context : Context) : String? {
+            findBundledPanVkLabel(context)?.let { return it }
+
+            val result = try {
                 context.assets.open(BUNDLED_PANVK_ASSET).use { installDriver(context, it) }
             } catch (e : IOException) {
                 Log.w(TAG, "Bundled PanVK package unavailable: " + e.message)
-                null
+                return null
+            }
+
+            return when (result) {
+                GpuDriverInstallResult.Success, GpuDriverInstallResult.AlreadyInstalled ->
+                    findBundledPanVkLabel(context)
+                else -> null
             }
         }
 
