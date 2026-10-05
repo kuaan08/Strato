@@ -36,8 +36,11 @@ data class GpuDriverMetadata(
     companion object {
         private const val SCHEMA_VERSION_V1 = 1
 
-        fun deserialize(metadataFile : File) : GpuDriverMetadata {
-            val metadataJson = Json.parseToJsonElement(metadataFile.readText())
+        fun deserialize(metadataFile : File) : GpuDriverMetadata =
+            deserialize(metadataFile.readText())
+
+        fun deserialize(metadataText : String) : GpuDriverMetadata {
+            val metadataJson = Json.parseToJsonElement(metadataText)
 
             return when (metadataJson.jsonObject["schemaVersion"]?.jsonPrimitive?.intOrNull) {
                 SCHEMA_VERSION_V1 -> GpuDriverMetadata(Json.decodeFromJsonElement<GpuDriverMetadataV1>(metadataJson))
