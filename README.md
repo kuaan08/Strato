@@ -1,42 +1,33 @@
-<h1 align="center">
-    <a href="https://github.com/strato-emu/strato" target="_blank">
-        <img height="60%" width="60%" src="https://raw.github.com/strato-emu/branding/master/banner/strato-banner-rounded.png"><br>
-    </a>
-    <a href="https://discord.gg/YhpdhVBmXX" target="_blank">
-        <img src="https://img.shields.io/discord/1104386300750082081.svg?label=&logo=discord&logoColor=ffffff&color=5865F2&labelColor=404EED">
-    </a>
-    <a href="https://github.com/strato-emu/strato/actions/workflows/ci.yml" target="_blank">
-        <img src="https://github.com/strato-emu/strato/actions/workflows/ci.yml/badge.svg"><br>
-    </a>
-</h1>
+# Strato Mali
 
-<p align="center">
-    <b><a href="CONTRIBUTING.md">Contributing Guide</a> • <a href="BUILDING.md">Building Guide</a></b>
-</p>
+**Strato Mali** is a private development fork of [Strato](https://github.com/strato-emu/strato) focused on Mali GPUs, Kbase/CSF and experimental Mesa PanVK support on Android.
 
-<p align="center">
-    <b>Strato</b> is an experimental emulator that runs on <b>ARMv8 Android™</b> devices and emulates the functionality of a <b>Nintendo Switch™</b> system, licensed under <a href="https://github.com/strato-emu/strato/blob/master/LICENSE.md"><b>GNU General Public License v3.0 or later</b></a>
-</p>
+The development branch is based on Strato's protected `master` history at commit `ae1566a48285816a87e81d4aeb40bd2f4e56e60b` ("Fix accidental recursion with trap handling"). The upstream `jit` branch is preserved separately for later evaluation; it is not merged into the stable base by default.
 
----
+## Mali / PanVK integration
 
-### Contact
-You can contact the core developers of Strato at our **[Discord](https://discord.gg/YhpdhVBmXX)**. If you have any questions, feel free to ask. It's also a good place to just keep up with the emulator, as most talk regarding development goes on over there.
+Strato already contains a custom Vulkan driver package system and an Android linker-namespace loader through libadrenotools. Strato Mali extends that path for Mali:
 
----
+- custom GPU driver selection is enabled when either `/dev/kgsl-3d0` or `/dev/mali0` is present;
+- Mali custom Vulkan drivers can be loaded from Strato's existing `gpu_drivers` directory;
+- the KGSL/libgsl direct-memory-import hook is enabled only on Adreno/KGSL and is explicitly disabled on Mali/Kbase;
+- Adreno-only maximum-clock controls remain Adreno-only;
+- Mali keeps Strato's normal buffer upload path rather than attempting KGSL memory-import ioctls.
 
-### Special Thanks
-A few noteworthy teams/projects who've helped us along the way are:
-* **[Skyline](https://skyline-emu.one/):** Strato builds on top of Skyline and is meant as a continuation of that project.
+The first target is the Mali-G615 MC6 / Kbase CSF stack used for PanVK development. PanVK support is experimental and is not presented as conformant or production-ready.
 
-* **[Ryujinx](https://ryujinx.org/):** We've used Ryujinx for reference throughout the project, the accuracy of their HLE implementations of Switch subsystems make it an amazing reference. The team behind the project has been extremely helpful with any queries we've had and have constantly helped us with any issues we've come across. **It should be noted that Strato is not based on Ryujinx**.
+## Branches
 
-* **[yuzu](https://yuzu-emu.org/):** Strato's shader compiler is a **fork** of *yuzu*'s shader compiler with Strato-specific changes, using it allowed us to focus on the parts of GPU emulation that we could specifically optimize for mobile while having a high-quality shader compiler implementation as a base.
+- `strato-mali` — Strato Mali development branch.
+- `master` — exact upstream stable Strato master baseline.
+- `jit` — upstream experimental JIT branch preserved for reference/testing.
 
-* **[Switchbrew](https://github.com/switchbrew/):** We've extensively used Switchbrew whether that be their **[wiki](https://switchbrew.org/)** with its colossal amount of information on the Switch that has saved us countless hours of time or **[libnx](https://github.com/switchbrew/libnx)** which was crucial to initial development of the emulator to ensure that our HLE kernel and sysmodule implementations were accurate.
+## Upstream and credits
 
----
+Strato Mali is derived from **Strato**, which continues the work of **Skyline**. The original Strato/Skyline authors and contributors retain credit for their work. This fork also uses Mesa/PanVK work and a Kbase PanVK fork maintained for the Mali integration.
 
-### Disclaimer
-* **Nintendo Switch** is a trademark of **Nintendo Co., Ltd**
-* **Android** is a trademark of **Google LLC**
+See the repository history and `LICENSE.md` for license and attribution details.
+
+## License
+
+The Strato codebase is licensed under **GNU GPL v3.0 or later**. Existing third-party components and submodules retain their respective licenses. This fork does not remove or replace upstream copyright notices.
