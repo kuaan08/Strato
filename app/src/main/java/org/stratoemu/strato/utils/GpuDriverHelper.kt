@@ -15,6 +15,7 @@ import kotlinx.serialization.SerializationException
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.util.zip.ZipInputStream
 
 private const val GPU_DRIVER_DIRECTORY = "gpu_drivers"
 private const val GPU_DRIVER_FILE_REDIRECT_DIR = "gpu/vk_file_redirect"
@@ -57,18 +58,40 @@ interface GpuDriverHelper {
 
         fun getSystemGpuName() : String? = getSystemDriverInfo()?.getOrNull(2)
 
-        private fun findBundledPanVkLabel(context : Context) : String? =
-            getInstalledDrivers(context).values
-                .firstOrNull { it.name == BUNDLED_PANVK_NAME }
-                ?.label
+        private fun getBundledPanVkMetadata(context : Context) : GpuDriverMetadata? {
+            return try {
+                context.assets.open(BUNDLED_PANVK_ASSET).use { stream ->
+                    ZipInputStream(stream).use { zip ->
+                        while (true) {
+                            val entry = zip.nextEntry ?: return null
+                            if (!entry.isDirectory && entry.name == GPU_DRIVER_META_FILE) {
+                                val metadataText = zip.readBytes().toString(Charsets.UTF_8)
+                                return GpuDriverMetadata.deserialize(metadataText)
+                            }
+                        }
+                    }
+                }
+            } catch (e : Exception) {
+                Log.w(TAG, "Failed to read bundled PanVK metadata: " + e.message)
+                null
+            }
+        }
 
         /**
-         * Ensures the bundled G615 PanVK package is installed and returns the
-         * installed driver label. A fixed asset name lets CI roll the bundled
-         * PanVK version without changing Kotlin code for every driver build.
+         * Ensures the exact PanVK version bundled into this APK is installed
+         * and returns its driver label. Older PanVK packages remain installed
+         * so a user can manually roll back if a newer build regresses.
          */
         fun ensureBundledPanVk(context : Context) : String? {
-            findBundledPanVkLabel(context)?.let { return it }
+            val bundledMetadata = getBundledPanVkMetadata(context) ?: return null
+            if (bundledMetadata.name != BUNDLED_PANVK_NAME) {
+                Log.w(TAG, "Unexpected bundled Vulkan driver: " + bundledMetadata.name)
+                return null
+            }
+
+            val exactLabel = bundledMetadata.label
+            if (getInstalledDrivers(context).values.any { it.label == exactLabel })
+                return exactLabel
 
             val result = try {
                 context.assets.open(BUNDLED_PANVK_ASSET).use { installDriver(context, it) }
@@ -79,7 +102,7 @@ interface GpuDriverHelper {
 
             return when (result) {
                 GpuDriverInstallResult.Success, GpuDriverInstallResult.AlreadyInstalled ->
-                    findBundledPanVkLabel(context)
+                    if (getInstalledDrivers(context).values.any { it.label == exactLabel }) exactLabel else null
                 else -> null
             }
         }
