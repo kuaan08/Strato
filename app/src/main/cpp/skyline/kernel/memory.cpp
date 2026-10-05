@@ -400,6 +400,64 @@ namespace skyline::kernel {
         return span<u8>{reinterpret_cast<u8 *>(mirrorBase), totalSize};
     }
 
+    bool MemoryManager::CollectSvcMemoryRange(span<u8> memory, u32 stateMask, u8 attributeMask,
+                                              std::vector<std::pair<u8 *, ChunkDescriptor>> &ranges) {
+        if (memory.empty()) return false;
+        auto it = chunks.upper_bound(memory.data());
+        if (it == chunks.begin()) return false;
+        --it;
+        const auto first = it->second;
+        auto address = memory.data();
+        size_t remaining = memory.size();
+        while (remaining) {
+            if (it == chunks.end() || it->first > address) return false;
+            const auto &chunk = it->second;
+            auto offset = static_cast<size_t>(address - it->first);
+            if (offset >= chunk.size || chunk.state != first.state || chunk.permission != first.permission ||
+                (chunk.state.value & stateMask) != stateMask || (chunk.attributes.value & attributeMask))
+                return false;
+            auto length = std::min(remaining, chunk.size - offset);
+            auto desc = chunk;
+            desc.size = length;
+            ranges.emplace_back(address, desc);
+            remaining -= length;
+            address += length;
+            ++it;
+        }
+        return true;
+    }
+
+    bool MemoryManager::SvcSetMemoryAttribute(span<u8> memory, u32 mask, u32 value) {
+        constexpr u32 uncached = 0x08, permissionLocked = 0x10;
+        if ((mask & ~(uncached | permissionLocked)) || (value & ~mask) ||
+            ((mask & permissionLocked) != (value & permissionLocked))) return false;
+        std::unique_lock lock{mutex};
+        u32 stateMask = (mask & uncached ? 1U << 24 : 0) | (mask & permissionLocked ? 1U << 27 : 0);
+        // Horizon ignores device sharing and settable attributes for this check.
+        constexpr u8 attributeMask = static_cast<u8>(~(0x08 | 0x10 | 0x04));
+        std::vector<std::pair<u8 *, ChunkDescriptor>> ranges;
+        if (!CollectSvcMemoryRange(memory, stateMask, attributeMask, ranges)) return false;
+        // Use snapshots: MapInternal may split, merge or erase map iterators.
+        for (auto &desc : ranges) {
+            desc.second.attributes.value = static_cast<u8>((desc.second.attributes.value & ~mask) | value);
+            MapInternal(desc);
+        }
+        return true;
+    }
+
+    bool MemoryManager::SvcSetMemoryPermission(span<u8> memory, memory::Permission permission) {
+        std::unique_lock lock{mutex};
+        std::vector<std::pair<u8 *, ChunkDescriptor>> ranges;
+        // All attributes, including PermissionLocked, must be clear, even when
+        // the requested permission is identical to the current permission.
+        if (!CollectSvcMemoryRange(memory, 1U << 8, 0xFF, ranges)) return false;
+        for (auto &desc : ranges) {
+            desc.second.permission = permission;
+            MapInternal(desc);
+        }
+        return true;
+    }
+
     void MemoryManager::SetRegionBorrowed(span<u8> memory, bool value) {
         std::unique_lock lock{mutex};
 
@@ -559,26 +617,49 @@ namespace skyline::kernel {
                 LOGE("Failed to free memory: {}", strerror(errno));
     }
 
-    void MemoryManager::SvcMapMemory(span<u8> source, span<u8> destination) {
+    bool MemoryManager::SvcMapMemory(span<u8> source, span<u8> destination) {
         std::unique_lock lock{mutex};
+        std::vector<std::pair<u8 *, ChunkDescriptor>> ranges;
+        if (!CollectSvcMemoryRange(source, 1U << 15, 0xFF, ranges) ||
+            ranges.front().second.permission != memory::Permission{true, true, false}) return false;
 
         MapInternal(std::pair<u8 *, ChunkDescriptor>(
             destination.data(), {
-                .size = destination.size(),
+                .isSrcMergeDisallowed = true,
                 .permission = {true, true, false},
                 .state = memory::states::Stack,
-                .isSrcMergeDisallowed = true
+                .size = destination.size()
             }));
 
         auto sourceHost{GetHostSpan(source)};
         auto destinationHost{GetHostSpan(destination)};
         std::memcpy(destinationHost.data(), sourceHost.data(), sourceHost.size());
 
-        ForeachChunkInRange(source, [&](std::pair<u8 *, ChunkDescriptor> &desc) __attribute__((always_inline)) {
+        for (auto &desc : ranges) {
             desc.second.permission = {false, false, false};
             desc.second.attributes.isBorrowed = true;
             MapInternal(desc);
-        });
+        }
+        return true;
+    }
+
+    bool MemoryManager::SvcMapTransferMemory(span<u8> memory, memory::Permission permission,
+                                             ChunkDescriptor &original, const std::function<void()> &map) {
+        std::unique_lock lock{mutex};
+        std::vector<std::pair<u8 *, ChunkDescriptor>> ranges;
+        if (!CollectSvcMemoryRange(memory, 1U << 17, 0xFF, ranges) ||
+            ranges.front().second.permission != memory::Permission{true, true, false}) return false;
+        original = ranges.front().second;
+        original.size = memory.size();
+        // Validate before replacing any host mapping, while holding the VMM lock.
+        map();
+        auto desc = original;
+        desc.permission = permission;
+        desc.attributes = memory::MemoryAttribute{1}; // Borrowed until released.
+        desc.state = permission.raw ? memory::states::TransferMemory : memory::states::TransferMemoryIsolated;
+        desc.isSrcMergeDisallowed = true;
+        MapInternal({memory.data(), desc});
+        return true;
     }
 
     void MemoryManager::SvcUnmapMemory(span<u8> source, span<u8> destination) {

@@ -7,6 +7,7 @@
 #include <common.h>
 #include <common/file_descriptor.h>
 #include <map>
+#include <functional>
 
 namespace skyline {
     namespace kernel::type {
@@ -75,6 +76,7 @@ namespace skyline {
                 bool isIpcLocked : 1; //!< True when IpcRefCount > 0
                 bool isDeviceShared : 1; //!< True when DeviceRefCount > 0
                 bool isUncached : 1; //!< This is used to disable memory caching to share memory with the GPU
+                bool isPermissionLocked : 1; //!< Guest permission changes are forbidden
             };
             u8 value;
         };
@@ -162,6 +164,7 @@ namespace skyline {
                 bool attributeChangeAllowed : 1; //!< If the application can use svcSetMemoryAttribute on this block
                 bool codeMemoryAllowed : 1; //!< If the application can use svcCreateCodeMemory on this block
                 bool isLinearMapped : 1; //!< If this block is mapped linearly
+                bool permissionLockAllowed : 1; //!< svcSetMemoryAttribute may set PermissionLocked
             };
             u32 value;
         };
@@ -176,12 +179,12 @@ namespace skyline {
             constexpr MemoryState Io{0x00182001};
             constexpr MemoryState Static{0x00042002};
             constexpr MemoryState Code{0x04DC7E03};
-            constexpr MemoryState CodeMutable{0x07FEBD04};
+            constexpr MemoryState CodeMutable{0x0FFEBD04};
             constexpr MemoryState Heap{0x077EBD05};
             constexpr MemoryState SharedMemory{0x04402006};
 
             constexpr MemoryState AliasCode{0x04DD7E08};
-            constexpr MemoryState AliasCodeData{0x07FFBD09};
+            constexpr MemoryState AliasCodeData{0x0FFFBD09};
             constexpr MemoryState Ipc{0x045C3C0A};
             constexpr MemoryState Stack{0x045C3C0B};
             constexpr MemoryState ThreadLocal{0x0400200C};
@@ -264,6 +267,10 @@ namespace skyline {
 
             void ForeachChunkInRange(span<u8> memory, auto editCallback);
 
+            // Called with mutex held exclusively; validates before any mutation.
+            bool CollectSvcMemoryRange(span<u8> memory, u32 stateMask, u8 attributeMask,
+                                       std::vector<std::pair<u8 *, ChunkDescriptor>> &ranges);
+
           public:
             memory::AddressSpaceType addressSpaceType{};
             span<u8> addressSpace{}; //!< The entire address space
@@ -324,6 +331,9 @@ namespace skyline {
              */
             void SetRegionPermission(span<u8> memory, memory::Permission permission);
 
+            bool SvcSetMemoryAttribute(span<u8> memory, u32 mask, u32 value);
+            bool SvcSetMemoryPermission(span<u8> memory, memory::Permission permission);
+
             /**
              * @brief Gets the highest chunk's descriptor that contains this address
              */
@@ -361,7 +371,10 @@ namespace skyline {
              * Implements the memory manager side functionality of svcMapMemory
              * @note Argument validity must be checked by the caller
              */
-            void SvcMapMemory(span<u8> source, span<u8> destination);
+            bool SvcMapMemory(span<u8> source, span<u8> destination);
+
+            bool SvcMapTransferMemory(span<u8> memory, memory::Permission permission,
+                                      ChunkDescriptor &original, const std::function<void()> &map);
 
             /**
              * Implements the memory manager side functionality of svcUnmapMemory

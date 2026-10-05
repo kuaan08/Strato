@@ -9,23 +9,12 @@ namespace skyline::kernel::type {
         : KMemory{state, KType::KTransferMemory, size} {}
 
     u8 *KTransferMemory::Map(span<u8> map, memory::Permission permission) {
-        // Get the host address of the guest memory
-        auto hostMap{state.process->memory.GetHostSpan(map)};
-        std::memcpy(host.data(), hostMap.data(), hostMap.size());
-        u8 *result{KMemory::Map(map, permission)};
-
-        auto oldChunk{state.process->memory.GetChunk(map.data()).value()};
-
-        originalMapping = oldChunk.second;
-
-        if (!originalMapping.state.transferMemoryAllowed) [[unlikely]] {
-            LOGW("Tried to map transfer memory with incompatible state at: {} (0x{:X} bytes)", fmt::ptr(map.data()), map.size());
-            return nullptr;
-        } else {
-            state.process->memory.MapTransferMemory(guest, permission);
-            state.process->memory.SetRegionBorrowed(guest, true);
-            return result;
-        }
+        if (!state.process->memory.SvcMapTransferMemory(map, permission, originalMapping, [&] {
+            auto hostMap{state.process->memory.GetHostSpan(map)};
+            std::memcpy(host.data(), hostMap.data(), hostMap.size());
+            KMemory::Map(map, permission);
+        })) return nullptr;
+        return guest.data();
     }
 
     void KTransferMemory::Unmap(span<u8> map) {

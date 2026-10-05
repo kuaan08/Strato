@@ -2,6 +2,7 @@
 // Copyright © 2020 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include <os.h>
+#include <limits>
 #include <nce.h>
 #include <kernel/types/KProcess.h>
 #include <common/trace.h>
@@ -71,14 +72,10 @@ namespace skyline::kernel::svc {
             return;
         }
 
-        auto chunk{state.process->memory.GetChunk(address).value()};
-        if (!chunk.second.state.permissionChangeAllowed) [[unlikely]] {
-            ctx.w0 = result::InvalidState;
-            LOGW("Permission change not allowed for chunk at: {}, state: 0x{:X}", chunk.first, chunk.second.state.value);
+        if (!state.process->memory.SvcSetMemoryPermission(span<u8>{address, size}, newPermission)) {
+            ctx.w0 = result::InvalidCurrentMemory;
             return;
         }
-
-        state.process->memory.SetRegionPermission(span<u8>(address, size), newPermission);
 
         LOGD("Set permission to {}{}{} at {} - {} (0x{:X} bytes)", newPermission.r ? 'R' : '-', newPermission.w ? 'W' : '-', newPermission.x ? 'X' : '-', fmt::ptr(address), fmt::ptr(address + size), size);
         ctx.w0 = Result{};
@@ -99,34 +96,30 @@ namespace skyline::kernel::svc {
             return;
         }
 
-        if (address >= (address + size) || !state.process->memory.AddressSpaceContains(span<u8>{address, size})) [[unlikely]] {
+        if (size > std::numeric_limits<u64>::max() - ctx.x0) {
             ctx.w0 = result::InvalidCurrentMemory;
-            LOGW("Invalid address and size combination: 'address': {}, 'size': 0x{:X} ", fmt::ptr(address), size);
             return;
         }
 
-        memory::MemoryAttribute mask{static_cast<u8>(ctx.w2)};
-        memory::MemoryAttribute value{static_cast<u8>(ctx.w3)};
-
-        auto maskedValue{mask.value | value.value};
-        if (maskedValue != mask.value || !mask.isUncached || mask.isDeviceShared || mask.isBorrowed || mask.isIpcLocked) [[unlikely]] {
+        // Validate full-width arguments; narrowing to u8 would hide invalid bits.
+        u32 mask{ctx.w2}, value{ctx.w3};
+        constexpr u32 supportedMask = 0x08 | 0x10;
+        if ((value & ~mask) || (mask & ~supportedMask) || ((mask & 0x10) != (value & 0x10))) {
             ctx.w0 = result::InvalidCombination;
-            LOGW("'mask' invalid: 0x{:X}, 0x{:X}", mask.value, value.value);
+            LOGW("Invalid memory attribute mask/value: 0x{:X}, 0x{:X}", mask, value);
             return;
         }
 
-        auto chunk{state.process->memory.GetChunk(address).value()};
-
-        // We only check the first found chunk for whatever reason.
-        if (!chunk.second.state.attributeChangeAllowed) [[unlikely]] {
-            ctx.w0 = result::InvalidState;
-            LOGW("Attribute change not allowed for chunk: {}", fmt::ptr(chunk.first));
+        if (!state.process->memory.AddressSpaceContains(span<u8>{address, size})) {
+            ctx.w0 = result::InvalidCurrentMemory;
             return;
         }
 
-        state.process->memory.SetRegionCpuCaching(span<u8>{address, size}, value.isUncached);
-
-        LOGD("Set CPU caching to {} at {} - {} (0x{:X} bytes)", static_cast<bool>(value.isUncached), fmt::ptr(address), fmt::ptr(address + size), size);
+        if (!state.process->memory.SvcSetMemoryAttribute(span<u8>{address, size}, mask, value)) {
+            ctx.w0 = result::InvalidCurrentMemory;
+            return;
+        }
+        LOGD("Set memory attributes: mask=0x{:X}, value=0x{:X}", mask, value);
         ctx.w0 = Result{};
     }
 
@@ -172,7 +165,10 @@ namespace skyline::kernel::svc {
             return;
         }
 
-        state.process->memory.SvcMapMemory(span<u8>{source, size}, span<u8>{destination, size});
+        if (!state.process->memory.SvcMapMemory(span<u8>{source, size}, span<u8>{destination, size})) {
+            ctx.w0 = result::InvalidCurrentMemory;
+            return;
+        }
 
         LOGD("Mapped range {} - {} to {} - {} (Size: 0x{:X} bytes)", fmt::ptr(source), fmt::ptr(source + size), fmt::ptr(destination), fmt::ptr(destination + size), size);
         ctx.w0 = Result{};
@@ -606,7 +602,8 @@ namespace skyline::kernel::svc {
 
         auto tmem{state.process->NewHandle<kernel::type::KTransferMemory>(size)};
         if (!tmem.item->Map(span<u8>{address, size}, permission)) [[unlikely]] {
-            ctx.w0 = result::InvalidState;
+            state.process->CloseHandle(tmem.handle);
+            ctx.w0 = result::InvalidCurrentMemory;
             return;
         }
 
