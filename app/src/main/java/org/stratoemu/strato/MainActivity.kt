@@ -77,10 +77,18 @@ class MainActivity : AppCompatActivity() {
 
     private val documentPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) {
         it?.let { uri ->
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            appSettings.searchLocation = uri.toString()
-
-            loadRoms(false)
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                appSettings.searchLocation = uri.toString()
+                loadRoms(false)
+            } catch (e : Exception) {
+                Log.e(TAG, "Failed to use selected ROM directory: $uri", e)
+                Snackbar.make(
+                    findViewById(android.R.id.content),
+                    getString(R.string.error) + ": " + (e.localizedMessage ?: e.javaClass.simpleName),
+                    Snackbar.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
