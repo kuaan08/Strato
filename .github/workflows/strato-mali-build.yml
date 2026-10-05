@@ -1,0 +1,44 @@
+name: Build Strato Mali
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - strato-mali
+
+jobs:
+  android:
+    name: Android arm64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Strato Mali
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Restore Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/
+          key: ${{ runner.os }}-strato-mali-gradle-${{ hashFiles('**/build.gradle', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-strato-mali-gradle-
+
+      - name: Build Strato Mali
+        run: ./gradlew --no-daemon --stacktrace --build-cache --parallel --configure-on-demand assembleMainlineRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Strato-Mali-APK
+          path: app/build/outputs/apk/mainline/release/*.apk
+          if-no-files-found: error
