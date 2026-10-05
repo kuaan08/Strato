@@ -87,7 +87,7 @@ namespace skyline::loader::content {
                     Require(meta.titleId == header.header.programId, "CNMT/NCA title ID mismatch");
                     for (const auto &record : meta.records) {
                         auto it = files.find(ContentName(record));
-                        Require(it != files.end() && it->second->size == record.size, "Missing or truncated content NCA");
+                        if (!ValidateRecordPresence(meta, record, it != files.end(), it != files.end() ? it->second->size : 0)) continue;
                         if (verifyIntegrity) Verify(it->second, record);
                         vfs::NCA content(it->second, keys, false, {}, true);
                         bool validType = record.type == 1 ? content.contentType == vfs::NcaContentType::Program :

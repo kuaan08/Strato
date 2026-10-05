@@ -67,6 +67,21 @@ int main(){
  put<uint16_t>(cnmt,14,0x10);put<uint16_t>(cnmt,16,1);put<u64>(cnmt,0x20,game);
  put<u8>(cnmt,0x30+0x31,0x10);put<u8>(cnmt,0x30+0x36,1);
  auto meta=loader::content::ParseMetadata(cnmt,game);assert(meta.version==65536&&meta.records[0].size==0x1000);
+ // A complete update can omit delta fragments; essential NCAs remain mandatory.
+ auto delta=meta.records[0];delta.type=6;
+ assert(!loader::content::ValidateRecordPresence(meta,delta,false,0));
+ assert(loader::content::ValidateRecordPresence(meta,delta,true,delta.size));
+ rejects([&]{loader::content::ValidateRecordPresence(meta,delta,true,delta.size-1);});
+ for(uint8_t type : {1,2,3,4,5}) {
+  auto required=delta;required.type=type;
+  rejects([&]{loader::content::ValidateRecordPresence(meta,required,false,0);});
+ }
+ auto dlcMeta=meta;dlcMeta.type=0x82;
+ rejects([&]{loader::content::ValidateRecordPresence(dlcMeta,delta,false,0);});
+ auto complete=cnmt;complete.resize(cnmt.size()+0x38);put<uint16_t>(complete,16,2);
+ std::copy(cnmt.begin()+0x30,cnmt.end(),complete.begin()+cnmt.size());
+ put<u8>(complete,cnmt.size()+0x36,6);
+ assert(loader::content::ParseMetadata(complete,game).records.size()==2);
  rejects([&]{loader::content::ParseMetadata(cnmt,game+0x2000);});
  auto bad=cnmt;bad.resize(0x30);rejects([&]{loader::content::ParseMetadata(bad,game);});
  bad=cnmt;put<uint16_t>(bad,16,65535);rejects([&]{loader::content::ParseMetadata(bad,game);});

@@ -7,6 +7,15 @@
 namespace skyline::loader::content {
     struct Record { std::array<uint8_t, 32> hash; std::array<uint8_t, 16> id; uint64_t size; uint8_t type, index; };
     struct Metadata { uint64_t titleId, applicationId; uint32_t version; uint8_t type; std::vector<Record> records; };
+    // Full update programs do not require incremental delta fragments.
+    // If a fragment is supplied, it must still pass size and integrity checks.
+    inline bool ValidateRecordPresence(const Metadata &meta, const Record &record, bool present, uint64_t size) {
+        using namespace vfs::patch;
+        if (!present && meta.type == 0x81 && record.type == 6) return false;
+        Require(present, "Missing required content NCA");
+        Require(size == record.size, "Content NCA size does not match metadata");
+        return true;
+    }
     inline Metadata ParseMetadata(const std::vector<uint8_t> &bytes, uint64_t gameId) {
         using namespace vfs::patch;
         Require(bytes.size() >= 0x20, "Truncated CNMT header");
