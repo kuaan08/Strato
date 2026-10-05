@@ -41,7 +41,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p app/src/main/assets/gpu_drivers
-          gh release download panvk-g615-strato-dev1 \
+          gh release download panvk-strato-dev1 \
             --repo "$GITHUB_REPOSITORY" \
             --pattern "PanVK-G615-Strato-Mali-0.1.0-strato-dev.1.zip" \
             --dir app/src/main/assets/gpu_drivers
