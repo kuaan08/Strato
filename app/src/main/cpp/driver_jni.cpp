@@ -4,6 +4,7 @@
 #include <jni.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <vulkan/vulkan_raii.hpp>
 #include <adrenotools/driver.h>
 #include "skyline/common/format.h"
@@ -32,13 +33,23 @@ extern "C" JNIEXPORT jobjectArray JNICALL Java_org_stratoemu_strato_utils_GpuDri
 
 static bool CheckKgslPresent() {
     constexpr auto KgslPath{"/dev/kgsl-3d0"};
-
     return access(KgslPath, F_OK) == 0;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL Java_org_stratoemu_strato_utils_GpuDriverHelper_00024Companion_supportsCustomDriverLoading(JNIEnv *env, jobject instance) {
-    // If the KGSL device exists custom drivers can be loaded using adrenotools
-    return CheckKgslPresent();
+static bool CheckMaliPresent() {
+    constexpr auto MaliPath{"/dev/mali0"};
+    return access(MaliPath, F_OK) == 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_org_stratoemu_strato_utils_GpuDriverHelper_00024Companion_supportsCustomDriverLoading(JNIEnv *, jobject) {
+    // AdrenoTools' linker namespace loader is generic enough to load an
+    // external Vulkan ICD on both KGSL and Kbase.  Only its optional GPU
+    // mapping import path is Adreno/KGSL-specific.
+    return CheckKgslPresent() || CheckMaliPresent();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_org_stratoemu_strato_utils_GpuDriverHelper_00024Companion_isMaliDevice(JNIEnv *, jobject) {
+    return CheckMaliPresent();
 }
 
 extern "C" JNIEXPORT jboolean JNICALL Java_org_stratoemu_strato_utils_GpuDriverHelper_00024Companion_supportsForceMaxGpuClocks(JNIEnv *env, jobject instance) {
