@@ -85,8 +85,8 @@ namespace skyline::loader {
                 .name = name,
                 .patchName = name + ".patch",
                 .hookName = name + ".hook",
-                .symbols = dynsym,
-                .symbolStrings = dynstr,
+                .symbols = std::vector<u8>(dynsym.begin(), dynsym.end()),
+                .symbolStrings = std::vector<char>(dynstr.begin(), dynstr.end()),
             };
             executables.insert(std::upper_bound(executables.begin(), executables.end(), base, [](void *ptr, const ExecutableSymbolicInfo &it) { return ptr < it.patchStart; }), std::move(symbolicInfo));
         }
@@ -108,29 +108,40 @@ namespace skyline::loader {
 
     template<ElfSymbol ElfSym>
     Loader::SymbolInfo Loader::ResolveSymbol(void *ptr) {
-        auto executable{std::lower_bound(executables.begin(), executables.end(), ptr, [](const ExecutableSymbolicInfo &it, void *ptr) { return it.programEnd < ptr; })};
-        auto symbols{executable->symbols.template cast<ElfSym>()};
+        const auto address{reinterpret_cast<uintptr_t>(ptr)};
+        auto executable{std::lower_bound(executables.begin(), executables.end(), address, [](const ExecutableSymbolicInfo &it, uintptr_t address) {
+            return reinterpret_cast<uintptr_t>(it.programEnd) <= address;
+        })};
 
-        if (executable != executables.end() && ptr >= executable->patchStart && ptr <= executable->programEnd) {
-            if (ptr >= executable->programStart) {
-                auto offset{reinterpret_cast<u8 *>(ptr) - reinterpret_cast<u8 *>(executable->programStart)};
-                auto symbol{std::find_if(symbols.begin(), symbols.end(), [&offset](const ElfSym &sym) { return sym.st_value <= offset && sym.st_value + sym.st_size > offset; })};
-                if (symbol != symbols.end() && symbol->st_name && symbol->st_name < executable->symbolStrings.size()) {
-                    return {executable->symbolStrings.data() + symbol->st_name, executable->name};
-                } else {
-                    return {.executableName = executable->name};
-                }
-            } else if (ptr >= executable->hookStart) {
-                return {.executableName = executable->hookName};
-            } else {
-                return {.executableName = executable->patchName};
-            }
+        // Host frames and addresses outside any guest executable have no guest symbols.
+        if (executable == executables.end() || address < reinterpret_cast<uintptr_t>(executable->patchStart))
+            return {};
+
+        if (address < reinterpret_cast<uintptr_t>(executable->programStart)) {
+            return {.executableName = address >= reinterpret_cast<uintptr_t>(executable->hookStart) ? executable->hookName : executable->patchName};
         }
-        return {};
+
+        // Missing or malformed optional debug metadata must not hide the original error.
+        if (executable->symbols.size() % sizeof(ElfSym))
+            return {.executableName = executable->name};
+
+        auto symbols{span(executable->symbols).template cast<ElfSym>()};
+        const auto offset{address - reinterpret_cast<uintptr_t>(executable->programStart)};
+        auto symbol{std::find_if(symbols.begin(), symbols.end(), [offset](const ElfSym &sym) {
+            return sym.st_value <= offset && offset - sym.st_value < sym.st_size;
+        })};
+
+        if (symbol != symbols.end() && symbol->st_name && symbol->st_name < executable->symbolStrings.size()) {
+            auto name{executable->symbolStrings.data() + symbol->st_name};
+            const auto remaining{executable->symbolStrings.size() - symbol->st_name};
+            if (std::memchr(name, 0, remaining))
+                return {name, executable->name};
+        }
+        return {.executableName = executable->name};
     }
 
     inline std::string GetFunctionStackTrace(Loader *loader, void *pointer) {
-        Dl_info info;
+        Dl_info info{};
         auto symbol{loader->ResolveSymbol64(pointer)};
         if (symbol.name) {
             int status{};
@@ -143,7 +154,7 @@ namespace skyline::loader {
         } else if (dladdr(pointer, &info)) {
             int status{};
             size_t length{};
-            std::unique_ptr<char, decltype(&std::free)> demangled{abi::__cxa_demangle(info.dli_sname, nullptr, &length, &status), std::free};
+            std::unique_ptr<char, decltype(&std::free)> demangled{info.dli_sname ? abi::__cxa_demangle(info.dli_sname, nullptr, &length, &status) : nullptr, std::free};
 
             auto extractFilename{[](const char *path) {
                 const char *filename{path};

@@ -67,8 +67,8 @@ namespace skyline::loader {
             std::string name; //!< The name of the executable
             std::string patchName; //!< The name of the patch section
             std::string hookName; //!< The name of the hook section
-            span<u8> symbols; //!< A span over the .dynsym section, this may be casted to the appropriate Elf_Sym type on demand
-            span<char> symbolStrings; //!< A span over the .dynstr section
+            std::vector<u8> symbols; //!< Owned copy of .dynsym, retained after the temporary executable is destroyed
+            std::vector<char> symbolStrings; //!< Owned copy of .dynstr
         };
 
         std::vector<ExecutableSymbolicInfo> executables;

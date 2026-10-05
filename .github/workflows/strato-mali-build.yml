@@ -27,6 +27,9 @@ jobs:
           done
           exit 1
 
+      - name: Test loader symbol lifetime and bounds (ASan/UBSan)
+        run: python3 tests/test_loader_symbols.py
+
       - name: Install Java 17
         uses: actions/setup-java@v4
         with:

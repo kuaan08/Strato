@@ -911,7 +911,9 @@ namespace skyline::kernel::svc {
         if (reason & (1ULL << 31)) {
             LOGD("Debugger is being engaged ({})", reason);
         } else {
-            LOGE("Exit Stack Trace ({}){}", reason, state.loader->GetStackTrace());
+            // Preserve the break reason even if symbolisation encounters a problem.
+            LOGENF("Guest Break: reason=0x{:X}, info=0x{:X}, size=0x{:X}", reason, ctx.x1, ctx.x2);
+            LOGENF("Exit Stack Trace ({}){}", reason, state.loader->GetStackTrace());
             if (state.thread->id)
                 state.process->Kill(false);
             std::longjmp(state.thread->originalCtx, true);
