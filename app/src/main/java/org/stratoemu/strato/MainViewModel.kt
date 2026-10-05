@@ -68,7 +68,7 @@ class MainViewModel @Inject constructor(@ApplicationContext context : Context, p
                     romElements.toFile(romsFile)
                     MainState.Loaded(romElements)
                 } catch (e : Exception) {
-                    Log.w(TAG, "Ran into exception while saving: ${e.message}")
+                    Log.w(TAG, "Ran into exception while saving: ${e.message}", e)
                     MainState.Error(e)
                 }
             }
@@ -84,22 +84,26 @@ class MainViewModel @Inject constructor(@ApplicationContext context : Context, p
      * This checks if the roms have changed since the last time they were loaded and if so it reloads them
      */
     fun checkRomHash(searchLocation : Uri, systemLanguage : Int) {
-        // Skip if an auto refresh is already in progress or if the state hasn't already loaded
-        if (isAutoRefreshingRoms || state !is MainState.Loaded)
+        if (searchLocation.toString().isBlank() || isAutoRefreshingRoms || state !is MainState.Loaded)
             return
+
         isAutoRefreshingRoms = true
 
         viewModelScope.launch(Dispatchers.IO) {
-            val currentHash = when (val currentState = state) {
-                is MainState.Loaded -> currentState.items.hashCode()
-                else -> 0
+            try {
+                val currentHash = when (val currentState = state) {
+                    is MainState.Loaded -> currentState.items.hashCode()
+                    else -> 0
+                }
+                val romElements = romProvider.loadRoms(searchLocation, systemLanguage)
+                val newHash = romElements.hashCode()
+                if (newHash != currentHash)
+                    state = MainState.Loaded(romElements)
+            } catch (e : Exception) {
+                Log.w(TAG, "Failed to refresh ROM directory ${searchLocation}: ${e.message}", e)
+            } finally {
+                isAutoRefreshingRoms = false
             }
-            val romElements = romProvider.loadRoms(searchLocation, systemLanguage)
-            val newHash = romElements.hashCode()
-            if (newHash != currentHash)
-                state = MainState.Loaded(romElements)
-
-            isAutoRefreshingRoms = false
         }
     }
 }
