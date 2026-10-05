@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #pragma once
 #include <map>
+#include <mbedtls/md.h>
 #include <vfs/nca.h>
 #include <vfs/region_backing.h>
 #include <vfs/ticket.h>
@@ -41,10 +42,27 @@ namespace skyline::loader::content {
         return files;
     }
     class Package {
+        static void Verify(const std::shared_ptr<vfs::Backing> &file, const Record &record) {
+            struct Digest {
+                mbedtls_md_context_t context;
+                Digest() { mbedtls_md_init(&context); }
+                ~Digest() { mbedtls_md_free(&context); }
+            } digest;
+            using namespace vfs::patch;
+            Require(mbedtls_md_setup(&digest.context, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0) == 0 && mbedtls_md_starts(&digest.context) == 0, "Could not initialize content integrity check");
+            std::vector<u8> buffer(std::min<size_t>(file->size, 1024 * 1024));
+            for (size_t offset{}; offset < file->size;) {
+                size_t length = std::min(buffer.size(), file->size - offset);
+                Require(file->ReadUnchecked(span(buffer).first(length), offset) == length && mbedtls_md_update(&digest.context, buffer.data(), length) == 0, "Failed to read content for integrity check");
+                offset += length;
+            }
+            std::array<u8, 32> hash{};
+            Require(mbedtls_md_finish(&digest.context, hash.data()) == 0 && hash == record.hash, "Content integrity check failed; the NSP may be damaged");
+        }
       public:
         std::map<std::string, std::shared_ptr<vfs::Backing>> files;
         std::vector<Metadata> metadata;
-        Package(std::shared_ptr<vfs::Backing> backing, std::shared_ptr<crypto::KeyStore> keys, u64 gameId) : files(ReadPackage(std::move(backing))) {
+        Package(std::shared_ptr<vfs::Backing> backing, std::shared_ptr<crypto::KeyStore> keys, u64 gameId, bool verifyIntegrity = false) : files(ReadPackage(std::move(backing))) {
             using namespace vfs::patch;
             for (const auto &[name, file] : files) {
                 if (!name.ends_with(".tik")) continue;
@@ -70,6 +88,7 @@ namespace skyline::loader::content {
                     for (const auto &record : meta.records) {
                         auto it = files.find(ContentName(record));
                         Require(it != files.end() && it->second->size == record.size, "Missing or truncated content NCA");
+                        if (verifyIntegrity) Verify(it->second, record);
                         vfs::NCA content(it->second, keys, false, {}, true);
                         bool validType = record.type == 1 ? content.contentType == vfs::NcaContentType::Program :
                             record.type == 2 ? (content.contentType == vfs::NcaContentType::Data || content.contentType == vfs::NcaContentType::PublicData) :

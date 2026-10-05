@@ -30,7 +30,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_stratoemu_strato_utils_GameContent
         }
         if (loader->programId != id) throw std::runtime_error("Base program ID does not match the selected game");
         std::vector<skyline::loader::content::Package> packages;
-        packages.emplace_back(std::make_shared<skyline::vfs::OsBacking>(contentFd), keys, id);
+        packages.emplace_back(std::make_shared<skyline::vfs::OsBacking>(contentFd), keys, id, true);
         skyline::loader::content::Apply(*loader, packages, keys);
         return nullptr;
     } catch (const skyline::loader::loader_exception &e) {

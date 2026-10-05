@@ -57,7 +57,9 @@ namespace skyline::vfs {
         size_t end{static_cast<size_t>(entry.endOffset) * constant::MediaUnitSize};
         if (offset > end || size > end - offset) throw exception("Invalid NCA PFS0 bounds");
 
-        auto pfs{std::make_shared<PartitionFileSystem>(CreateBacking(sectionHeader, std::make_shared<RegionBacking>(backing, offset, size), offset))};
+        auto decrypted{CreateBacking(sectionHeader, std::make_shared<RegionBacking>(backing, offset, size), offset)};
+        if (!decrypted) throw exception("Unsupported NCA PFS0 encryption");
+        auto pfs{std::make_shared<PartitionFileSystem>(decrypted)};
 
         if (contentType == NcaContentType::Program) {
             // An ExeFS must always contain an NPDM and a main NSO, whereas the logo section will always contain a logo and a startup movie

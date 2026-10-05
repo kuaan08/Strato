@@ -5,7 +5,7 @@
 #include <vfs/patch_table.h>
 
 namespace skyline::loader::content {
-    struct Record { std::array<uint8_t, 16> id; uint64_t size; uint8_t type, index; };
+    struct Record { std::array<uint8_t, 32> hash; std::array<uint8_t, 16> id; uint64_t size; uint8_t type, index; };
     struct Metadata { uint64_t titleId, applicationId; uint32_t version; uint8_t type; std::vector<Record> records; };
     inline Metadata ParseMetadata(const std::vector<uint8_t> &bytes, uint64_t gameId) {
         using namespace vfs::patch;
@@ -24,6 +24,7 @@ namespace skyline::loader::content {
         bool requiredContent = false;
         for (uint16_t i = 0; i < count; ++i, offset += 0x38) {
             Record record{};
+            std::memcpy(record.hash.data(), bytes.data() + offset, record.hash.size());
             std::memcpy(record.id.data(), bytes.data() + offset + 0x20, record.id.size());
             for (size_t j = 0; j < 6; ++j) record.size |= static_cast<uint64_t>(bytes[offset + 0x30 + j]) << (j * 8);
             record.type = bytes[offset + 0x36];

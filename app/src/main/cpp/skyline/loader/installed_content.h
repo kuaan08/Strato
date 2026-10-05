@@ -8,6 +8,17 @@
 #include "content_package.h"
 
 namespace skyline::loader::content {
+    inline void ValidateRomFs(const std::shared_ptr<vfs::Backing> &backing) {
+        using namespace vfs::patch;
+        Require(backing && backing->size >= 0x50, "Missing or truncated RomFS header");
+        std::vector<u8> header(0x50);
+        Require(backing->ReadUnchecked(header) == header.size() && Value<u64>(header, 0) == 0x50, "Invalid RomFS header; check the base game and decryption keys");
+        for (size_t i : {1, 3, 5, 7}) {
+            auto offset = Value<u64>(header, i * 8), size = Value<u64>(header, (i + 1) * 8);
+            Require(offset <= backing->size && size <= backing->size - offset, "Invalid RomFS table bounds");
+        }
+        Require(Value<u64>(header, 32) >= 24 && Value<u64>(header, 72) <= backing->size, "Invalid RomFS directory or data bounds");
+    }
     inline void Apply(Loader &loader, const std::vector<Package> &packages, std::shared_ptr<crypto::KeyStore> keys) {
         using namespace vfs::patch;
         const Package *updatePackage{};
@@ -33,12 +44,13 @@ namespace skyline::loader::content {
                 if (record.type != 1 && record.type != 3) continue;
                 vfs::NCA nca(updatePackage->files.at(ContentName(record)), keys, false, loader.baseRomFsSection);
                 if (record.type == 1) {
-                    Require(nca.exeFs && nca.romFs && nca.exeFs->FileExists("main") && nca.exeFs->FileExists("main.npdm"), "Incomplete update program");
-                    vfs::RomFileSystem filesystem(nca.romFs);
+                    Require(nca.exeFs && nca.romFs && nca.exeFs->FileExists("main") && nca.exeFs->FileExists("main.npdm") && nca.exeFs->FileExists("rtld"), "Incomplete update program");
+                    ValidateRomFs(nca.romFs);
                     romFs = nca.romFs;
                     exeFs = nca.exeFs;
                 } else {
                     Require(nca.romFs != nullptr, "Missing update control data");
+                    ValidateRomFs(nca.romFs);
                     vfs::RomFileSystem filesystem(nca.romFs);
                     nacp.emplace(filesystem.OpenFile("control.nacp"));
                 }
@@ -49,7 +61,7 @@ namespace skyline::loader::content {
                 if (record.type != 2 || record.index != 0) continue;
                 vfs::NCA nca(selected.first->files.at(ContentName(record)), keys);
                 Require(nca.romFs != nullptr, "DLC has no readable data filesystem");
-                vfs::RomFileSystem filesystem(nca.romFs);
+                ValidateRomFs(nca.romFs);
                 contents[id] = nca.romFs;
             }
         }
