@@ -78,5 +78,13 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
             forceMaxGpuClocksPref.isChecked = false
             forceMaxGpuClocksPref.summary = context!!.getString(R.string.force_max_gpu_clocks_desc_unsupported)
         }
+
+        // Direct host-memory import is a KGSL/libgsl feature.  PanVK on Mali
+        // uses Kbase and must stay on Strato's normal buffer upload path.
+        if (GpuDriverHelper.isMaliDevice()) {
+            val directMemoryImportPref = findPreference<TwoStatePreference>("use_direct_memory_import")!!
+            directMemoryImportPref.isSelectable = false
+            directMemoryImportPref.isChecked = false
+        }
     }
 }
