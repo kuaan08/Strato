@@ -961,6 +961,8 @@ namespace skyline::kernel::svc {
             // 6.0.0+
             TotalMemoryAvailableWithoutSystemResource = 21,
             TotalMemoryUsageWithoutSystemResource = 22,
+            // 18.0.0+
+            AliasRegionExtraSize = 28,
         };
 
         InfoState info{static_cast<u32>(ctx.w1)};
@@ -1050,6 +1052,29 @@ namespace skyline::kernel::svc {
 
             case InfoState::TotalMemoryUsageWithoutSystemResource:
                 out = state.process->memory.GetUserMemoryUsage();
+                break;
+
+            case InfoState::AliasRegionExtraSize:
+                // Horizon checks the subtype before looking up the process.
+                if (id1 != 0) {
+                    ctx.w0 = result::InvalidCombination;
+                    return;
+                }
+                try {
+                    // Includes the current-process pseudo-handle. Deleted handles
+                    // and handles for other kernel object types must also fail.
+                    state.process->GetHandle<type::KProcess>(handle);
+                } catch (const std::out_of_range &) {
+                    ctx.w0 = result::InvalidHandle;
+                    return;
+                } catch (const exception &) {
+                    ctx.w0 = result::InvalidHandle;
+                    return;
+                }
+                // InitializeRegions reserves only the standard alias region
+                // (6 GiB for AS36 / 64 GiB for AS39), with no extra extension.
+                // Report the actual layout; do not advertise unreserved memory.
+                out = 0;
                 break;
 
             case InfoState::UserExceptionContextAddr:

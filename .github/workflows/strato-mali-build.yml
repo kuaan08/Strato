@@ -36,6 +36,9 @@ jobs:
           python3 tests/test_storage_read.py
           python3 tests/test_partition_bounds.py
 
+      - name: Test Horizon GetInfo process queries (ASan/UBSan)
+        run: python3 tests/test_get_info.py
+
       - name: Install Java 17
         uses: actions/setup-java@v4
         with:
