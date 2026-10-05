@@ -37,6 +37,11 @@ interface GpuDriverHelper {
         external fun supportsCustomDriverLoading() : Boolean
 
         /**
+         * Returns true when the Mali Kbase device node is present.
+         */
+        external fun isMaliDevice() : Boolean
+
+        /**
          * Queries the driver for manual max clock forcing support
          */
         external fun supportsForceMaxGpuClocks() : Boolean
