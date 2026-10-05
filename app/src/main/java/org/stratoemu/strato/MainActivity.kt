@@ -79,6 +79,17 @@ class MainActivity : AppCompatActivity() {
         it?.let { uri ->
             try {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+                val usableDirectory = try {
+                    val directory = DocumentFile.fromTreeUri(this, uri)
+                    directory != null && directory.exists() && directory.isDirectory && directory.canRead()
+                } catch (e : Exception) {
+                    false
+                }
+
+                if (!usableDirectory)
+                    throw IllegalArgumentException("Selected folder cannot be read")
+
                 appSettings.searchLocation = uri.toString()
                 loadRoms(false)
             } catch (e : Exception) {
@@ -342,6 +353,8 @@ class MainActivity : AppCompatActivity() {
             adapter.notifyItemRangeChanged(0, adapter.currentItems.size)
         }
 
-        viewModel.checkRomHash(Uri.parse(appSettings.searchLocation), EmulationSettings.global.systemLanguage)
+        if (appSettings.searchLocation.isNotBlank()) {
+            viewModel.checkRomHash(Uri.parse(appSettings.searchLocation), EmulationSettings.global.systemLanguage)
+        }
     }
 }
