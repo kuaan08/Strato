@@ -38,15 +38,22 @@ class StratoApplication : Application() {
         instance = this
         System.loadLibrary("skyline")
 
-        // Bootstrap the bundled G615 PanVK package once on the target Mali
-        // family.  A user's later manual driver selection is preserved.
+        // Keep the exact PanVK package bundled into this APK installed on the
+        // target G615. Auto-upgrade the selection only while the user is still
+        // following our previous automatic choice; manual driver choices win.
         val bootstrapPrefs = getSharedPreferences("strato_mali_bootstrap", MODE_PRIVATE)
-        if (!bootstrapPrefs.getBoolean("panvk_g615_configured", false) &&
-            GpuDriverHelper.isMaliDevice() &&
+        if (GpuDriverHelper.isMaliDevice() &&
             GpuDriverHelper.getSystemGpuName()?.contains("Mali-G615", ignoreCase = true) == true) {
-            GpuDriverHelper.ensureBundledPanVk(this)?.let { driverLabel ->
-                EmulationSettings.global.gpuDriver = driverLabel
-                bootstrapPrefs.edit().putBoolean("panvk_g615_configured", true).apply()
+            GpuDriverHelper.ensureBundledPanVk(this)?.let { bundledLabel ->
+                val previousAutoLabel = bootstrapPrefs.getString("panvk_auto_label", null)
+                val currentLabel = EmulationSettings.global.gpuDriver
+
+                if (currentLabel == bundledLabel) {
+                    bootstrapPrefs.edit().putString("panvk_auto_label", bundledLabel).apply()
+                } else if (previousAutoLabel == null || currentLabel == previousAutoLabel) {
+                    EmulationSettings.global.gpuDriver = bundledLabel
+                    bootstrapPrefs.edit().putString("panvk_auto_label", bundledLabel).apply()
+                }
             }
         }
 
