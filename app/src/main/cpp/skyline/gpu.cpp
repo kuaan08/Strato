@@ -2,6 +2,7 @@
 // Copyright © 2021 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include <dlfcn.h>
+#include <unistd.h>
 #include <adrenotools/driver.h>
 #include <os.h>
 #include <jvm.h>
@@ -11,7 +12,7 @@
 namespace skyline::gpu {
     static vk::raii::Instance CreateInstance(const DeviceState &state, const vk::raii::Context &context) {
         vk::ApplicationInfo applicationInfo{
-            .pApplicationName = "Skyline",
+            .pApplicationName = "Strato Mali",
             .applicationVersion = static_cast<uint32_t>(state.jvm->GetVersionCode()), // Get the application version from JNI
             .pEngineName = "FTX1", // "Fast Tegra X1"
             .apiVersion = VkApiVersion,
@@ -344,17 +345,31 @@ namespace skyline::gpu {
     static PFN_vkGetInstanceProcAddr LoadVulkanDriver(const DeviceState &state, adrenotools_gpu_mapping *mapping) {
         void *libvulkanHandle{};
 
-        // If the user has selected a custom driver, try to load it
+        // The AdrenoTools namespace/custom-driver loader itself is useful on
+        // both Adreno and Mali. GPU mapping import, however, is implemented
+        // with KGSL/libgsl hooks and must never be enabled on Kbase.
+        const bool hasKgsl = access("/dev/kgsl-3d0", F_OK) == 0;
+        const bool hasMali = access("/dev/mali0", F_OK) == 0;
+        const int commonFlags = ADRENOTOOLS_DRIVER_FILE_REDIRECT |
+                                (hasKgsl ? ADRENOTOOLS_DRIVER_GPU_MAPPING_IMPORT : 0);
+        auto *activeMapping = hasKgsl ? mapping : nullptr;
+
+        if (hasMali)
+            LOGI("Strato Mali: Kbase device detected; KGSL mapping import disabled");
+
+        // If the user has selected a custom driver, try to load it.
         if (!(*state.settings->gpuDriver).empty()) {
+            LOGI("Strato Mali: loading custom Vulkan driver {}/{}",
+                 *state.settings->gpuDriver, *state.settings->gpuDriverLibraryName);
             libvulkanHandle = adrenotools_open_libvulkan(
                 RTLD_NOW,
-                ADRENOTOOLS_DRIVER_FILE_REDIRECT | ADRENOTOOLS_DRIVER_CUSTOM | ADRENOTOOLS_DRIVER_GPU_MAPPING_IMPORT,
+                commonFlags | ADRENOTOOLS_DRIVER_CUSTOM,
                 nullptr, // We require Android 10 so don't need to supply
                 state.os->nativeLibraryPath.c_str(),
                 (state.os->privateAppFilesPath + "gpu_drivers/" + *state.settings->gpuDriver + "/").c_str(),
                 (*state.settings->gpuDriverLibraryName).c_str(),
                 (state.os->publicAppFilesPath + "gpu/vk_file_redirect/").c_str(),
-                mapping
+                activeMapping
             );
 
             if (!libvulkanHandle) {
@@ -366,13 +381,13 @@ namespace skyline::gpu {
         if (!libvulkanHandle) {
             libvulkanHandle = adrenotools_open_libvulkan(
                 RTLD_NOW,
-                ADRENOTOOLS_DRIVER_FILE_REDIRECT | ADRENOTOOLS_DRIVER_GPU_MAPPING_IMPORT,
+                commonFlags,
                 nullptr, // We require Android 10 so don't need to supply
                 state.os->nativeLibraryPath.c_str(),
                 nullptr,
                 nullptr,
                 (state.os->publicAppFilesPath + "gpu/vk_file_redirect/").c_str(),
-                mapping
+                activeMapping
             );
 
             if (!libvulkanHandle) {
