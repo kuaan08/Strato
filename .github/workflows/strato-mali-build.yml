@@ -36,15 +36,22 @@ jobs:
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
-      - name: Bundle PanVK G615
+      - name: Bundle latest PanVK G615 for Strato Mali
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p app/src/main/assets/gpu_drivers
-          gh release download panvk-strato-dev1 \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "PanVK-G615-Strato-Mali-0.1.0-strato-dev.1.zip" \
-            --dir app/src/main/assets/gpu_drivers
+          set -euxo pipefail
+          rm -rf /tmp/panvk-strato
+          mkdir -p /tmp/panvk-strato app/src/main/assets/gpu_drivers
+          gh release download panvk-strato-latest \
+            --repo "LukeValen/panvk-kbase-android" \
+            --pattern "PanVK-G615-Strato-Mali-*.zip" \
+            --dir /tmp/panvk-strato
+          PANVK_ZIP="$(find /tmp/panvk-strato -type f -name 'PanVK-G615-Strato-Mali-*.zip' | head -n1)"
+          test -n "$PANVK_ZIP"
+          unzip -l "$PANVK_ZIP" | grep -q 'libvulkan_panfrost.so'
+          unzip -p "$PANVK_ZIP" meta.json | grep -q '"name": "PanVK G615 Strato Mali"'
+          cp "$PANVK_ZIP" app/src/main/assets/gpu_drivers/PanVK-G615-Strato-Mali-latest.zip
 
       - name: Restore Gradle cache
         uses: actions/cache@v4
