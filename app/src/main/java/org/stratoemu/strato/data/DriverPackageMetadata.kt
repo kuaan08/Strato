@@ -61,4 +61,6 @@ private data class GpuDriverMetadataV1(
     val minApi : Int,
     val description : String,
     val libraryName : String,
+    // Optional provenance field used by the bundled PanVK package.
+    val sanitizedArtifactSha256 : String? = null,
 )
