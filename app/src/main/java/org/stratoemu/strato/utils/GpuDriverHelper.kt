@@ -20,13 +20,14 @@ private const val GPU_DRIVER_DIRECTORY = "gpu_drivers"
 private const val GPU_DRIVER_FILE_REDIRECT_DIR = "gpu/vk_file_redirect"
 private const val GPU_DRIVER_INSTALL_TEMP_DIR = "driver_temp"
 private const val GPU_DRIVER_META_FILE = "meta.json"
+private const val BUNDLED_PANVK_ASSET = "gpu_drivers/PanVK-G615-Strato-Mali-0.1.0-strato-dev.1.zip"
 private const val TAG = "GPUDriverHelper"
 
 interface GpuDriverHelper {
     companion object {
         /**
          * Returns information about the system GPU driver.
-         * @return An array containing the driver vendor and the driver version, in this order, or `null` if an error occurred
+         * @return Driver ID, driver version and GPU device name, or `null` if an error occurred.
          */
         private external fun getSystemDriverInfo() : Array<String>?
 
@@ -51,6 +52,26 @@ interface GpuDriverHelper {
          * @param force Whether to enable or disable the forced clocks
          */
         external fun forceMaxGpuClocks(enable : Boolean)
+
+        const val BUNDLED_PANVK_LABEL = "PanVK G615 Strato Mali-v0.1.0-strato-dev.1"
+
+        fun getSystemGpuName() : String? = getSystemDriverInfo()?.getOrNull(2)
+
+        /**
+         * Installs the bundled G615 PanVK package if it is not already present.
+         * Returns null when the build does not contain the bundled asset.
+         */
+        fun installBundledPanVk(context : Context) : GpuDriverInstallResult? {
+            if (getInstalledDrivers(context).values.any { it.label == BUNDLED_PANVK_LABEL })
+                return GpuDriverInstallResult.AlreadyInstalled
+
+            return try {
+                context.assets.open(BUNDLED_PANVK_ASSET).use { installDriver(context, it) }
+            } catch (e : IOException) {
+                Log.w(TAG, "Bundled PanVK package unavailable: " + e.message)
+                null
+            }
+        }
 
         /**
          * Returns the list of installed gpu drivers.
