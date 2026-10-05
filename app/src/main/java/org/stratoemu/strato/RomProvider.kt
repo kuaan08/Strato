@@ -30,8 +30,14 @@ class RomProvider @Inject constructor(@ApplicationContext private val context : 
         }
     }
 
-    fun loadRoms(searchLocation : Uri, systemLanguage : Int) = DocumentFile.fromTreeUri(context, searchLocation)!!.let { documentFile ->
-        arrayListOf<AppEntry>().apply {
+    fun loadRoms(searchLocation : Uri, systemLanguage : Int) : ArrayList<AppEntry> {
+        val documentFile = DocumentFile.fromTreeUri(context, searchLocation)
+            ?: return arrayListOf()
+
+        if (!documentFile.exists() || !documentFile.isDirectory)
+            return arrayListOf()
+
+        return arrayListOf<AppEntry>().apply {
             addEntries(mapOf("nro" to NRO, "nso" to NSO, "nca" to NCA, "nsp" to NSP, "xci" to XCI), documentFile, this, systemLanguage)
         }
     }
