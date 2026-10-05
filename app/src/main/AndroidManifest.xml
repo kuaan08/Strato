@@ -16,7 +16,7 @@
         android:enableOnBackInvokedCallback="true"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_descriptor"
-        android:icon="@drawable/logo_skyline"
+        android:icon="@drawable/logo_strato_mali"
         android:isGame="true"
         android:appCategory="game"
         android:label="@string/app_name"
