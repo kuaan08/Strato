@@ -17,7 +17,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "org.stratoemu.strato"
+        applicationId "com.lukevalen.stratomali"
 
         minSdk 29
         targetSdk 33
