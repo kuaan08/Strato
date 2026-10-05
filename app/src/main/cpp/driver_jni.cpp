@@ -24,9 +24,10 @@ extern "C" JNIEXPORT jobjectArray JNICALL Java_org_stratoemu_strato_utils_GpuDri
     auto driverId{vk::to_string(deviceProperties2.get<vk::PhysicalDeviceDriverProperties>().driverID)};
     auto driverVersion{fmt::format("{}.{}.{}", VK_API_VERSION_MAJOR(properties.driverVersion), VK_API_VERSION_MINOR(properties.driverVersion), VK_API_VERSION_PATCH(properties.driverVersion))};
 
-    auto array = env->NewObjectArray(2, env->FindClass("java/lang/String"), nullptr);
+    auto array = env->NewObjectArray(3, env->FindClass("java/lang/String"), nullptr);
     env->SetObjectArrayElement(array, 0, env->NewStringUTF(driverId.c_str()));
     env->SetObjectArrayElement(array, 1, env->NewStringUTF(driverVersion.c_str()));
+    env->SetObjectArrayElement(array, 2, env->NewStringUTF(properties.deviceName));
 
     return array;
 }
