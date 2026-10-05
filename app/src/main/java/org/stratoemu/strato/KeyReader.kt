@@ -10,6 +10,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
+import java.util.ArrayDeque
 
 object KeyReader {
     private val Tag = KeyReader::class.java.simpleName
@@ -41,19 +42,33 @@ object KeyReader {
         importFromDirectory(context, directory)
     }
 
-    private fun importFromDirectory(context : Context, directory : DocumentFile) {
-        val children = try {
-            directory.listFiles()
-        } catch (e : Exception) {
-            Log.w(Tag, "Cannot enumerate directory ${directory.uri}: ${e.message}")
-            return
-        }
+    private fun importFromDirectory(context : Context, rootDirectory : DocumentFile) {
+        val pendingDirectories = ArrayDeque<DocumentFile>()
+        val visitedDirectories = HashSet<String>()
+        pendingDirectories.add(rootDirectory)
 
-        children.forEach { file ->
-            if (file.isDirectory) {
-                importFromDirectory(context, file)
-            } else {
-                KeyType.parseOrNull(file)?.let { import(context, file.uri, it) }
+        while (pendingDirectories.isNotEmpty()) {
+            val directory = pendingDirectories.removeFirst()
+            if (!visitedDirectories.add(directory.uri.toString()))
+                continue
+
+            val children = try {
+                directory.listFiles()
+            } catch (e : Exception) {
+                Log.w(Tag, "Cannot enumerate directory ${directory.uri}: ${e.message}")
+                continue
+            }
+
+            children.forEach { file ->
+                try {
+                    if (file.isDirectory) {
+                        pendingDirectories.addLast(file)
+                    } else {
+                        KeyType.parseOrNull(file)?.let { import(context, file.uri, it) }
+                    }
+                } catch (e : Exception) {
+                    Log.w(Tag, "Skipping inaccessible key candidate ${file.uri}: ${e.message}")
+                }
             }
         }
     }
