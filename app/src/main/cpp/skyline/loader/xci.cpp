@@ -14,7 +14,10 @@ namespace skyline::loader {
         if (header.magic != util::MakeMagic<u32>("HEAD"))
             throw exception("Invalid XCI file");
 
-        xci = std::make_shared<vfs::PartitionFileSystem>(std::make_shared<vfs::RegionBacking>(backing, header.hfs0PartitionOffset, header.hfs0HeaderSize * sizeof(u32)));
+        if (header.hfs0PartitionOffset < sizeof(GamecardHeader) || header.hfs0PartitionOffset > backing->size || header.hfs0HeaderSize > backing->size - header.hfs0PartitionOffset)
+            throw exception("Invalid XCI root partition bounds");
+        // The root HFS0 includes its child partition data, not just the header.
+        xci = std::make_shared<vfs::PartitionFileSystem>(std::make_shared<vfs::RegionBacking>(backing, header.hfs0PartitionOffset, backing->size - header.hfs0PartitionOffset));
 
         auto root{xci->OpenDirectory("", {false, true})};
         for (const auto &entry : root->Read()) {
