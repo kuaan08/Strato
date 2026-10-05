@@ -32,10 +32,24 @@ object KeyReader {
         }
     }
 
-    fun importFromLocation(context : Context, searchLocation : Uri) = importFromDirectory(context, DocumentFile.fromTreeUri(context, searchLocation)!!)
+    fun importFromLocation(context : Context, searchLocation : Uri) {
+        val directory = DocumentFile.fromTreeUri(context, searchLocation)
+        if (directory == null || !directory.exists() || !directory.isDirectory) {
+            Log.w(Tag, "Ignoring invalid key import directory: $searchLocation")
+            return
+        }
+        importFromDirectory(context, directory)
+    }
 
     private fun importFromDirectory(context : Context, directory : DocumentFile) {
-        directory.listFiles().forEach { file ->
+        val children = try {
+            directory.listFiles()
+        } catch (e : Exception) {
+            Log.w(Tag, "Cannot enumerate directory ${directory.uri}: ${e.message}")
+            return
+        }
+
+        children.forEach { file ->
             if (file.isDirectory) {
                 importFromDirectory(context, file)
             } else {
