@@ -59,22 +59,23 @@ interface GpuDriverHelper {
         fun getSystemGpuName() : String? = getSystemDriverInfo()?.getOrNull(2)
 
         private fun getBundledPanVkMetadata(context : Context) : GpuDriverMetadata? {
-            return try {
+            try {
                 context.assets.open(BUNDLED_PANVK_ASSET).use { stream ->
                     ZipInputStream(stream).use { zip ->
-                        while (true) {
-                            val entry = zip.nextEntry ?: return null
+                        var entry = zip.nextEntry
+                        while (entry != null) {
                             if (!entry.isDirectory && entry.name == GPU_DRIVER_META_FILE) {
                                 val metadataText = zip.readBytes().toString(Charsets.UTF_8)
                                 return GpuDriverMetadata.deserialize(metadataText)
                             }
+                            entry = zip.nextEntry
                         }
                     }
                 }
             } catch (e : Exception) {
                 Log.w(TAG, "Failed to read bundled PanVK metadata: " + e.message)
-                null
             }
+            return null
         }
 
         /**
