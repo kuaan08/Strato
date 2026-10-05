@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="game_content">Dlc/Update</string>
+    <string name="game_content_install">Instalar</string>
+    <string name="game_content_manage">Gerenciar DLC/Updates instalados</string>
+    <string name="game_content_remove">Remover este DLC/Update?</string>
+    <string name="game_content_count">%1$d pacote(s) instalado(s)</string>
+    <string name="game_content_installing">Instalando DLC/Update</string>
+    <string name="game_content_copying">Copiando conteúdo…</string>
+    <string name="game_content_verifying">Verificando conteúdo e compatibilidade…</string>
+    <string name="game_content_installed">DLC/Update instalado. Será aplicado ao iniciar o jogo.</string>
+    <string name="game_content_already_installed">Este conteúdo já está instalado.</string>
+    <string name="game_content_install_failed">Não foi possível instalar o DLC/Update</string>
+</resources>

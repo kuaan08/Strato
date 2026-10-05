@@ -11,6 +11,7 @@
 #include "loader/nca.h"
 #include "loader/nsp.h"
 #include "loader/xci.h"
+#include "loader/installed_content.h"
 #include "os.h"
 
 namespace skyline::kernel {
@@ -50,6 +51,8 @@ namespace skyline::kernel {
                     throw exception("Unsupported ROM extension.");
             }
         }();
+
+        loader::content::LoadInstalled(*state.loader, publicAppFilesPath, keyStore);
 
         state.gpu->Initialise();
 

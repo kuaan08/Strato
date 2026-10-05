@@ -48,13 +48,16 @@ namespace skyline::loader {
             throw exception("Incomplete NSP file");
 
         romFs = programNca->romFs;
+        programId = programNca->header.programId;
+        baseRomFsSection = programNca->romFsSection;
         controlRomFs = std::make_shared<vfs::RomFileSystem>(controlNca->romFs);
         nacp.emplace(controlRomFs->OpenFile("control.nacp"));
     }
 
     void *NspLoader::LoadProcessData(const std::shared_ptr<kernel::type::KProcess> &process, const DeviceState &state) {
-        process->npdm = vfs::NPDM(programNca->exeFs->OpenFile("main.npdm"));
-        return NcaLoader::LoadExeFs(this, programNca->exeFs, process, state);
+        auto exefs = installedExeFs ? installedExeFs : programNca->exeFs;
+        process->npdm = vfs::NPDM(exefs->OpenFile("main.npdm"));
+        return NcaLoader::LoadExeFs(this, exefs, process, state);
     }
 
     std::vector<u8> NspLoader::GetIcon(language::ApplicationLanguage language) {

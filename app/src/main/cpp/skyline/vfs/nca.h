@@ -6,6 +6,7 @@
 #include <crypto/key_store.h>
 #include <crypto/aes_cipher.h>
 #include "filesystem.h"
+#include "bktr_backing.h"
 
 namespace skyline {
     namespace constant {
@@ -137,7 +138,8 @@ namespace skyline {
                     HierarchicalIntegrityHashInfo integrityHashInfo; //!< The HashInfo used for RomFS
                     HierarchicalSha256HashInfo sha256HashInfo; //!< The HashInfo used for PFS0
                 };
-                u8 _pad1_[0x40]; // PatchInfo
+                BktrHeader relocation;
+                BktrHeader subsection;
                 u32 generation; //!< The generation of the NCA section
                 u32 secureValue; //!< The secure value of the section
                 u8 _pad2_[0x30]; //!< SparseInfo
@@ -174,6 +176,7 @@ namespace skyline {
             bool encrypted{false};
             bool rightsIdEmpty;
             bool useKeyArea;
+            std::shared_ptr<Backing> baseRomFsSection;
 
             void ReadPfs0(const NcaSectionHeader &sectionHeader, const NcaFsEntry &entry);
 
@@ -192,10 +195,11 @@ namespace skyline {
             std::shared_ptr<FileSystem> logo; //!< The PFS0 filesystem for this NCA's logo section
             std::shared_ptr<FileSystem> cnmt; //!< The PFS0 filesystem for this NCA's CNMT section
             std::shared_ptr<Backing> romFs; //!< The backing for this NCA's RomFS section
+            std::shared_ptr<Backing> romFsSection; //!< Full decrypted section, including IVFC levels, for BKTR base reads
             NcaHeader header; //!< The header of the NCA
             NcaContentType contentType; //!< The content type of the NCA
 
-            NCA(std::shared_ptr<vfs::Backing> backing, std::shared_ptr<crypto::KeyStore> keyStore, bool useKeyArea = false);
+            NCA(std::shared_ptr<vfs::Backing> backing, std::shared_ptr<crypto::KeyStore> keyStore, bool useKeyArea = false, std::shared_ptr<Backing> baseRomFsSection = {}, bool headerOnly = false);
         };
     }
 }

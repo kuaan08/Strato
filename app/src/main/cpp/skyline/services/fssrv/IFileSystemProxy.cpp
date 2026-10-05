@@ -104,6 +104,11 @@ namespace skyline::service::fssrv {
         request.Skip<std::array<u8, 7>>(); // 7-bytes padding
         auto dataId{request.Pop<u64>()};
 
+        if (auto content = state.loader->addOnContent.find(dataId); content != state.loader->addOnContent.end()) {
+            manager.RegisterService(std::make_shared<IStorage>(content->second, state, manager), session, response);
+            return {};
+        }
+
         auto systemArchivesFileSystem{std::make_shared<vfs::OsFileSystem>(state.os->publicAppFilesPath + "/switch/nand/system/Contents/registered/")};
         auto systemArchives{systemArchivesFileSystem->OpenDirectory("")};
         auto keyStore{std::make_shared<skyline::crypto::KeyStore>(state.os->privateAppFilesPath + "keys")};

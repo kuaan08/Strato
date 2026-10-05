@@ -11,6 +11,42 @@
 #include "skyline/loader/xci.h"
 #include "skyline/loader/nsp.h"
 #include "skyline/jvm.h"
+#include "skyline/loader/installed_content.h"
+
+extern "C" JNIEXPORT jstring JNICALL Java_org_stratoemu_strato_utils_GameContentUtils_validatePackage(JNIEnv *env, jobject, jint contentFd, jint gameFd, jint gameFormat, jstring keysPath, jstring gameId) {
+    skyline::signal::ScopedStackBlocker stackBlocker;
+    try {
+        auto keys = std::make_shared<skyline::crypto::KeyStore>(skyline::JniString(env, keysPath));
+        std::string idString = skyline::JniString(env, gameId);
+        if (idString.size() != 16 || idString.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+            throw std::runtime_error("Invalid game title ID");
+        auto id = std::stoull(idString, nullptr, 16);
+        auto base = std::make_shared<skyline::vfs::OsBacking>(gameFd);
+        std::unique_ptr<skyline::loader::Loader> loader;
+        switch (static_cast<skyline::loader::RomFormat>(gameFormat)) {
+            case skyline::loader::RomFormat::NSP: loader = std::make_unique<skyline::loader::NspLoader>(base, keys); break;
+            case skyline::loader::RomFormat::XCI: loader = std::make_unique<skyline::loader::XciLoader>(base, keys); break;
+            default: throw std::runtime_error("Update/DLC installation requires an NSP or XCI base game");
+        }
+        if (loader->programId != id) throw std::runtime_error("Base program ID does not match the selected game");
+        std::vector<skyline::loader::content::Package> packages;
+        packages.emplace_back(std::make_shared<skyline::vfs::OsBacking>(contentFd), keys, id);
+        skyline::loader::content::Apply(*loader, packages, keys);
+        return nullptr;
+    } catch (const skyline::loader::loader_exception &e) {
+        const char *message = "Invalid content or missing decryption keys";
+        switch (e.error) {
+            case skyline::loader::LoaderResult::MissingHeaderKey: message = "Missing header_key in prod.keys"; break;
+            case skyline::loader::LoaderResult::MissingTitleKey: message = "Missing title key or ticket"; break;
+            case skyline::loader::LoaderResult::MissingTitleKek: message = "Missing titlekek in prod.keys"; break;
+            case skyline::loader::LoaderResult::MissingKeyArea: message = "Missing key_area_key in prod.keys"; break;
+            default: break;
+        }
+        return env->NewStringUTF(message);
+    } catch (const std::exception &e) {
+        return env->NewStringUTF(e.what());
+    }
+}
 
 extern "C" JNIEXPORT jint JNICALL Java_org_stratoemu_strato_loader_RomFile_populate(JNIEnv *env, jobject thiz, jint jformat, jint fd, jstring appFilesPathJstring, jint systemLanguage) {
     skyline::signal::ScopedStackBlocker stackBlocker;

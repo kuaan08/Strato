@@ -17,17 +17,23 @@ namespace skyline::vfs {
 
         size_t entrySize{hashed ? sizeof(HashedFileEntry) : sizeof(PartitionFileEntry)};
         size_t stringTableOffset{sizeof(FsHeader) + (header.numFiles * entrySize)};
+        if (header.numFiles > 65536 || header.stringTableSize > 16 * 1024 * 1024 || stringTableOffset > backing->size || header.stringTableSize > backing->size - stringTableOffset)
+            throw exception("Invalid partition filesystem table bounds");
         fileDataOffset = stringTableOffset + header.stringTableSize;
 
         std::vector<char> stringTable(header.stringTableSize + 1);
         backing->Read(span(stringTable).first(header.stringTableSize), stringTableOffset);
         stringTable[header.stringTableSize] = 0;
 
-        for (u32 entryOffset{sizeof(FsHeader)}; entryOffset < header.numFiles * entrySize; entryOffset += entrySize) {
+        for (u32 i{}; i < header.numFiles; ++i) {
+            size_t entryOffset = sizeof(FsHeader) + i * entrySize;
             auto entry{backing->Read<PartitionFileEntry>(entryOffset)};
 
+            if (entry.stringTableOffset >= header.stringTableSize || !std::memchr(stringTable.data() + entry.stringTableOffset, 0, header.stringTableSize - entry.stringTableOffset) || entry.offset > backing->size - fileDataOffset || entry.size > backing->size - fileDataOffset - entry.offset)
+                throw exception("Invalid partition filesystem entry bounds");
+
             std::string name(&stringTable[entry.stringTableOffset]);
-            fileMap.emplace(name, entry);
+            if (!fileMap.emplace(name, entry).second) throw exception("Duplicate partition filename");
         }
     }
 

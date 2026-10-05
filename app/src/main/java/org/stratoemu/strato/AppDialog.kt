@@ -16,6 +16,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
@@ -26,6 +28,13 @@ import org.stratoemu.strato.databinding.AppDialogBinding
 import org.stratoemu.strato.loader.LoaderResult
 import org.stratoemu.strato.settings.SettingsActivity
 import org.stratoemu.strato.utils.SaveManagementUtils
+import org.stratoemu.strato.utils.GameContentUtils
+import org.stratoemu.strato.loader.RomFormat
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import android.widget.ProgressBar
+import android.widget.LinearLayout
+import android.widget.TextView
 import org.stratoemu.strato.utils.serializable
 
 /**
@@ -55,6 +64,66 @@ class AppDialog : BottomSheetDialogFragment() {
      */
     private lateinit var documentPicker : ActivityResultLauncher<Array<String>>
     private lateinit var startForResultExportSave : ActivityResultLauncher<Intent>
+    private var installingContent = false
+    private val contentPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) installContent(uri)
+    }
+
+    private fun refreshContent() {
+        val files = item.titleId?.let { GameContentUtils.installed(requireContext(), it) } ?: emptyList()
+        binding.contentStatus.text = getString(R.string.game_content_count, files.size)
+        binding.manageContent.isEnabled = files.isNotEmpty() && !installingContent
+    }
+
+    private fun installContent(uri : android.net.Uri) {
+        if (installingContent) return
+        val titleId = item.titleId ?: return
+        val context = requireContext().applicationContext
+        installingContent = true
+        binding.installContent.isEnabled = false
+        binding.manageContent.isEnabled = false
+        binding.gamePlay.isEnabled = false
+        val text = TextView(requireContext()).apply { setText(R.string.game_content_copying) }
+        val progress = ProgressBar(requireContext(), null, android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate = true; max = 100 }
+        val layout = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = (24 * resources.displayMetrics.density).toInt()
+            setPadding(padding, padding, padding, padding)
+            addView(text)
+            addView(progress)
+        }
+        val dialog = AlertDialog.Builder(requireContext()).setTitle(R.string.game_content_installing).setView(layout).setCancelable(false).create()
+        dialog.show()
+        lifecycleScope.launch {
+            try {
+                var lastUpdate = 0L
+                val installed = GameContentUtils.install(context, item.uri, titleId, uri) { copied, total ->
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (copied < 0 || now - lastUpdate >= 150) {
+                        lastUpdate = now
+                        progress.post {
+                            text.setText(if (copied < 0) R.string.game_content_verifying else R.string.game_content_copying)
+                            progress.isIndeterminate = total <= 0 || copied < 0
+                            if (copied >= 0 && total > 0) progress.progress = (copied.toDouble() * 100 / total).toInt().coerceIn(0, 100)
+                        }
+                    }
+                }
+                if (isAdded && view != null) Snackbar.make(binding.root, if (installed) R.string.game_content_installed else R.string.game_content_already_installed, Snackbar.LENGTH_LONG).show()
+            } catch (e : CancellationException) {
+                throw e
+            } catch (e : Exception) {
+                if (isAdded && view != null) AlertDialog.Builder(requireContext()).setTitle(R.string.game_content_install_failed).setMessage(e.message).setPositiveButton(android.R.string.ok, null).show()
+            } finally {
+                dialog.dismiss()
+                installingContent = false
+                if (isAdded && view != null) {
+                    binding.installContent.isEnabled = item.loaderResult == LoaderResult.Success && (item.format == RomFormat.NSP || item.format == RomFormat.XCI)
+                    binding.gamePlay.isEnabled = item.loaderResult == LoaderResult.Success
+                    refreshContent()
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState : Bundle?) {
         super.onCreate(savedInstanceState)
@@ -142,6 +211,24 @@ class AppDialog : BottomSheetDialogFragment() {
         binding.exportSave.isEnabled = saveExists
         binding.exportSave.setOnClickListener {
             SaveManagementUtils.exportSave(requireContext(), startForResultExportSave, item.titleId, "${item.title} (v${binding.gameVersion.text}) [${item.titleId}]")
+        }
+
+        binding.installContent.isEnabled = item.loaderResult == LoaderResult.Success && (item.format == RomFormat.NSP || item.format == RomFormat.XCI)
+        binding.installContent.setOnClickListener { contentPicker.launch(arrayOf("*/*")) }
+        refreshContent()
+        binding.manageContent.setOnClickListener {
+            val titleId = item.titleId ?: return@setOnClickListener
+            val files = GameContentUtils.installed(requireContext(), titleId)
+            AlertDialog.Builder(requireContext()).setTitle(R.string.game_content_manage)
+                .setItems(files.map { GameContentUtils.label(requireContext(), it) }.toTypedArray()) { _, index ->
+                    AlertDialog.Builder(requireContext()).setTitle(R.string.game_content_remove)
+                        .setMessage(GameContentUtils.label(requireContext(), files[index]))
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton(R.string.yes) { _, _ ->
+                            try { GameContentUtils.remove(requireContext(), files[index]); refreshContent() }
+                            catch (e : Exception) { Snackbar.make(binding.root, e.message ?: getString(R.string.game_content_install_failed), Snackbar.LENGTH_LONG).show() }
+                        }.show()
+                }.setNegativeButton(android.R.string.cancel, null).show()
         }
 
         binding.gameTitleId.setOnLongClickListener {

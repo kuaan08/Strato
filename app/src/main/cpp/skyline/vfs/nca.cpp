@@ -14,7 +14,7 @@
 namespace skyline::vfs {
     using namespace loader;
 
-    NCA::NCA(std::shared_ptr<vfs::Backing> pBacking, std::shared_ptr<crypto::KeyStore> pKeyStore, bool pUseKeyArea) : backing(std::move(pBacking)), keyStore(std::move(pKeyStore)), useKeyArea(pUseKeyArea) {
+    NCA::NCA(std::shared_ptr<vfs::Backing> pBacking, std::shared_ptr<crypto::KeyStore> pKeyStore, bool pUseKeyArea, std::shared_ptr<Backing> pBaseRomFsSection, bool headerOnly) : backing(std::move(pBacking)), keyStore(std::move(pKeyStore)), useKeyArea(pUseKeyArea), baseRomFsSection(std::move(pBaseRomFsSection)) {
         header = backing->Read<NcaHeader>();
 
         if (header.magic != util::MakeMagic<u32>("NCA3")) {
@@ -33,10 +33,16 @@ namespace skyline::vfs {
 
         contentType = header.contentType;
         rightsIdEmpty = header.rightsId == crypto::KeyStore::Key128{};
+        if (header.size != backing->size)
+            throw exception("NCA size does not match its file");
+        if (headerOnly) return;
 
         for (size_t i{}; i < header.sectionHeaders.size(); i++) {
             auto &sectionHeader{header.sectionHeaders.at(i)};
             auto &sectionEntry{header.fsEntries.at(i)};
+            if (!sectionEntry.startOffset && !sectionEntry.endOffset) continue;
+            if (sectionEntry.startOffset < sizeof(NcaHeader) / constant::MediaUnitSize || sectionEntry.endOffset < sectionEntry.startOffset || static_cast<u64>(sectionEntry.endOffset) * constant::MediaUnitSize > backing->size)
+                throw exception("Invalid NCA section bounds");
 
             if (sectionHeader.fsType == NcaSectionFsType::PFS0 && sectionHeader.hashType == NcaSectionHashType::HierarchicalSha256)
                 ReadPfs0(sectionHeader, sectionEntry);
@@ -47,7 +53,9 @@ namespace skyline::vfs {
 
     void NCA::ReadPfs0(const NcaSectionHeader &sectionHeader, const NcaFsEntry &entry) {
         size_t offset{static_cast<size_t>(entry.startOffset) * constant::MediaUnitSize + sectionHeader.sha256HashInfo.pfs0Offset};
-        size_t size{constant::MediaUnitSize * static_cast<size_t>(entry.endOffset - entry.startOffset)};
+        size_t size{sectionHeader.sha256HashInfo.pfs0Size};
+        size_t end{static_cast<size_t>(entry.endOffset) * constant::MediaUnitSize};
+        if (offset > end || size > end - offset) throw exception("Invalid NCA PFS0 bounds");
 
         auto pfs{std::make_shared<PartitionFileSystem>(CreateBacking(sectionHeader, std::make_shared<RegionBacking>(backing, offset, size), offset))};
 
@@ -63,10 +71,26 @@ namespace skyline::vfs {
     }
 
     void NCA::ReadRomFs(const NcaSectionHeader &sectionHeader, const NcaFsEntry &entry) {
-        size_t offset{static_cast<size_t>(entry.startOffset) * constant::MediaUnitSize + sectionHeader.integrityHashInfo.levels.back().offset};
+        size_t sectionOffset{static_cast<size_t>(entry.startOffset) * constant::MediaUnitSize};
+        size_t sectionSize{static_cast<size_t>(entry.endOffset - entry.startOffset) * constant::MediaUnitSize};
+        auto raw{std::make_shared<RegionBacking>(backing, sectionOffset, sectionSize)};
+        auto decrypted{CreateBacking(sectionHeader, raw, sectionOffset)};
+        if (!decrypted) throw exception("Unsupported NCA RomFS encryption");
+        if (sectionHeader.encryptionType == NcaSectionEncryptionType::BKTR) {
+            // Metadata scanners cannot apply a patch without its base section.
+            if (!baseRomFsSection) return;
+            auto key{encrypted ? (!(rightsIdEmpty || useKeyArea) ? GetTitleKey() : GetKeyAreaKey(sectionHeader.encryptionType)) : crypto::KeyStore::Key128{}};
+            crypto::KeyStore::Key128 ctr{};
+            auto secure = util::SwapEndianness(sectionHeader.secureValue);
+            auto generation = util::SwapEndianness(sectionHeader.generation);
+            std::memcpy(ctr.data(), &secure, 4);
+            std::memcpy(ctr.data() + 4, &generation, 4);
+            romFsSection = std::make_shared<BktrBacking>(baseRomFsSection, raw, decrypted, sectionHeader.relocation, sectionHeader.subsection, ctr, key, sectionOffset, encrypted);
+        } else romFsSection = decrypted;
+        size_t offset{sectionHeader.integrityHashInfo.levels.back().offset};
         size_t size{sectionHeader.integrityHashInfo.levels.back().size};
-
-        romFs = CreateBacking(sectionHeader, std::make_shared<RegionBacking>(backing, offset, size), offset);
+        if (offset > romFsSection->size || size > romFsSection->size - offset) throw exception("Invalid RomFS level bounds");
+        romFs = std::make_shared<RegionBacking>(romFsSection, offset, size);
     }
 
     std::shared_ptr<Backing> NCA::CreateBacking(const NcaSectionHeader &sectionHeader, std::shared_ptr<Backing> rawBacking, size_t offset) {

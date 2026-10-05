@@ -4,6 +4,8 @@
 #pragma once
 
 #include <linux/elf.h>
+#include <map>
+#include <vfs/filesystem.h>
 #include <vfs/nacp.h>
 #include <common/signal.h>
 #include "executable.h"
@@ -93,6 +95,10 @@ namespace skyline::loader {
 
         std::optional<vfs::NACP> nacp;
         std::shared_ptr<vfs::Backing> romFs;
+        u64 programId{};
+        std::shared_ptr<vfs::Backing> baseRomFsSection;
+        std::shared_ptr<vfs::FileSystem> installedExeFs;
+        std::map<u64, std::shared_ptr<vfs::Backing>> addOnContent;
 
         virtual ~Loader() = default;
 
