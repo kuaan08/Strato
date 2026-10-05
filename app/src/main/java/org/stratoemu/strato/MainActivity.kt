@@ -82,7 +82,7 @@ class MainActivity : AppCompatActivity() {
                 appSettings.searchLocation = uri.toString()
                 loadRoms(false)
             } catch (e : Exception) {
-                Log.e(TAG, "Failed to use selected ROM directory: $uri", e)
+                android.util.Log.e("StratoMali", "Failed to use selected ROM directory: $uri", e)
                 Snackbar.make(
                     findViewById(android.R.id.content),
                     getString(R.string.error) + ": " + (e.localizedMessage ?: e.javaClass.simpleName),
