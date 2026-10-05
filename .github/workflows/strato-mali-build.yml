@@ -53,6 +53,11 @@ jobs:
           unzip -p "$PANVK_ZIP" meta.json | grep -q '"name": "PanVK G615 Strato Mali"'
           cp "$PANVK_ZIP" app/src/main/assets/gpu_drivers/PanVK-G615-Strato-Mali-latest.zip
 
+      - name: Restore native CCache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          max-size: 3Gi
+
       - name: Restore Gradle cache
         uses: actions/cache@v4
         with:
@@ -62,6 +67,9 @@ jobs:
             ${{ runner.os }}-strato-mali-gradle-
 
       - name: Build Strato Mali
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: ./gradlew --no-daemon --stacktrace --build-cache --parallel --configure-on-demand assembleMainlineRelease
 
       - name: Upload APK
