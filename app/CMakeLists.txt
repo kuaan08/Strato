@@ -399,3 +399,9 @@ target_compile_options(skyline PRIVATE -Wall -Wno-unknown-attributes -Wno-c++20-
 
 target_link_libraries(skyline PRIVATE shader_recompiler audio_core)
 target_link_libraries_system(skyline android perfetto fmt lz4_static tzcode vkma mbedcrypto opus Boost::intrusive Boost::container Boost::preprocessor Boost::regex range-v3 adrenotools tsl::robin_map)
+
+# Expensive command/register tracing is opt-in; normal builds do no diagnostic decoding.
+option(STRATO_VIDEO_TRACE "Trace bounded Host1x video command submissions" OFF)
+if(STRATO_VIDEO_TRACE)
+    target_compile_definitions(skyline PRIVATE STRATO_VIDEO_TRACE)
+endif()

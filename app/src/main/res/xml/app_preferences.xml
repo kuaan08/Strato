@@ -3,6 +3,10 @@
     <PreferenceCategory
         android:key="category_content"
         android:title="@string/content">
+        <org.stratoemu.strato.preference.SetupPreference
+            app:key="welcome_setup"
+            app:persistent="false"
+            app:title="@string/setup_open" />
         <org.stratoemu.strato.preference.DocumentsProviderPreference
             app:key="document_provider"
             app:summary="@string/open_data_directory_summary"

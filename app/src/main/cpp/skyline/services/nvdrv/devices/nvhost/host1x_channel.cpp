@@ -142,7 +142,8 @@ namespace skyline::service::nvdrv::device::nvhost {
             LOGD("Submit gather, CPU address: 0x{:X}, words: 0x{:X}", gatherAddress, cmdBuf.words);
 
             span gather(reinterpret_cast<u32 *>(gatherAddress), cmdBuf.words);
-            // Diagnostic branch: inspect commands without changing execution or fence behavior.
+#ifdef STRATO_VIDEO_TRACE
+            // Explicit diagnostic builds only: never parse/log gathers in normal builds.
             // Raw data remains on the device; only register writes and metadata reach the log.
             if (videoTraceSubmits < 32 && videoTraceMethods < 2048) {
                 LOGI("VideoTrace channel={} submit={} gather_words={} relocations={}",
@@ -164,11 +165,14 @@ namespace skyline::service::nvdrv::device::nvhost {
                     LOGW("VideoTrace stopped at unsupported or malformed gather: {}", error.what());
                 }
             }
+#endif
             // Skip submitting the cmdbufs as no functionality is implemented
             // state.soc->host1x.channels[static_cast<size_t>(channelType)].Push(gather);
         }
 
+#ifdef STRATO_VIDEO_TRACE
         ++videoTraceSubmits;
+#endif
 
         return PosixResult::Success;
     }

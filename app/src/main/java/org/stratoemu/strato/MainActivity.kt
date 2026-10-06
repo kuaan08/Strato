@@ -103,6 +103,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val setupCallback = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (appSettings.searchLocation.isBlank()) finish()
+        else loadRoms(false)
+    }
+
     private val settingsCallback = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (appSettings.refreshRequired) loadRoms(false)
     }
@@ -146,7 +151,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.stateData.observe(this, ::handleState)
-        loadRoms(!appSettings.refreshRequired)
+        if (appSettings.searchLocation.isBlank()) {
+            if (savedInstanceState == null)
+                setupCallback.launch(Intent(this, org.stratoemu.strato.setup.SetupActivity::class.java))
+        } else {
+            loadRoms(!appSettings.refreshRequired)
+        }
 
         binding.searchBar.apply {
             binding.logIcon.setOnClickListener {
@@ -229,7 +239,7 @@ class MainActivity : AppCompatActivity() {
         binding.appList.layoutManager = CustomLayoutManager(gridSpan)
         setAppListDecoration()
 
-        if (appSettings.searchLocation.isEmpty()) documentPicker.launch(null)
+
     }
 
     private fun getAppItems() = mutableListOf<AppViewItem>().apply {
@@ -289,6 +299,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadRoms(loadFromFile : Boolean) {
+        if (appSettings.searchLocation.isBlank()) {
+            binding.swipeRefreshLayout.isRefreshing = false
+            return
+        }
         if (!loadFromFile) {
             binding.romPlaceholder.isVisible = true
             binding.romPlaceholder.text = getString(R.string.searching_roms)

@@ -89,6 +89,7 @@ object KeyReader {
         val outputFile = File(outputDirectory, keyType.fileName)
         val tmpOutputFile = File("${outputFile}.tmp")
         var valid = false
+        var keyCount = 0
 
         context.contentResolver.openInputStream(uri).use { inputStream ->
             tmpOutputFile.bufferedWriter().use { writer ->
@@ -112,14 +113,15 @@ object KeyReader {
                             KeyType.Prod -> {
                                 if (!key.contains("_"))
                                     return@useLines false
-                                if (!isHexString(value))
+                                if (value.isEmpty() || !isHexString(value))
                                     return@useLines false
                             }
                         }
 
+                        keyCount++
                         writer.append("$key=$value\n")
                     }
-                    true
+                    keyCount > 0
                 }
             }
         }
@@ -136,11 +138,8 @@ object KeyReader {
             return ImportResult.InvalidKeys
         }
 
-        if (outputFile.exists() && !outputFile.delete()) {
-            cleanup()
-            return ImportResult.DeletePreviousFailed
-        }
-
+        // Both files are in the same directory. Android rename replaces the old file atomically;
+        // keep the previous keys intact if the replacement fails.
         if (!tmpOutputFile.renameTo(outputFile)) {
             cleanup()
             return ImportResult.MoveFailed

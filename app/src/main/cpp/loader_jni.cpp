@@ -137,9 +137,13 @@ extern "C" JNIEXPORT jstring Java_org_stratoemu_strato_preference_FirmwareImport
         if (nca.header.programId == systemVersionProgramId && nca.romFs != nullptr) {
             auto controlRomFs{std::make_shared<skyline::vfs::RomFileSystem>(nca.romFs)};
             auto file{controlRomFs->OpenFile("file")};
-            SystemVersion systemVersion;
+            if (!file)
+                throw skyline::exception("Firmware version file is missing");
+            SystemVersion systemVersion{};
             file->Read<SystemVersion>(systemVersion);
-            return env->NewStringUTF(reinterpret_cast<char *>(systemVersion.displayVersion));
+            const auto *version{reinterpret_cast<const char *>(systemVersion.displayVersion)};
+            const std::string boundedVersion(version, strnlen(version, sizeof(systemVersion.displayVersion)));
+            return env->NewStringUTF(boundedVersion.c_str());
         }
     }
 
@@ -155,6 +159,8 @@ std::vector<skyline::u8> decodeBfttfFont(const std::shared_ptr<skyline::vfs::Bac
 
     if (firstBytesXor == BFTTFMagic) {
         constexpr size_t initialOffset{8};
+        if (bfttfFile->size < initialOffset || bfttfFile->size % sizeof(skyline::u32))
+            throw skyline::exception("Firmware font has a truncated header or word");
         std::vector<skyline::u8> font(bfttfFile->size - initialOffset);
 
         for (size_t offset = initialOffset; offset < bfttfFile->size; offset += 4) {
@@ -222,5 +228,24 @@ extern "C" JNIEXPORT void Java_org_stratoemu_strato_preference_FirmwareImportPre
                 ttfFile->Write(decodedFont);
             }
         }
+    }
+}
+
+// Setup reuses the existing firmware readers, converting native validation failures
+// to Java IOExceptions so invalid archives/keys cannot terminate the setup activity.
+extern "C" JNIEXPORT jstring Java_org_stratoemu_strato_setup_FirmwareInstaller_fetchFirmwareVersion(JNIEnv *env, jobject thiz, jstring archives, jstring keys) {
+    try {
+        return Java_org_stratoemu_strato_preference_FirmwareImportPreference_fetchFirmwareVersion(env, thiz, archives, keys);
+    } catch (const std::exception &error) {
+        env->ThrowNew(env->FindClass("java/io/IOException"), error.what());
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT void Java_org_stratoemu_strato_setup_FirmwareInstaller_extractFonts(JNIEnv *env, jobject thiz, jstring archives, jstring keys, jstring fonts) {
+    try {
+        Java_org_stratoemu_strato_preference_FirmwareImportPreference_extractFonts(env, thiz, archives, keys, fonts);
+    } catch (const std::exception &error) {
+        env->ThrowNew(env->FindClass("java/io/IOException"), error.what());
     }
 }
