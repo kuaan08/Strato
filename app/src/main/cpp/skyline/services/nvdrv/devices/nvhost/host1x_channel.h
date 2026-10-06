@@ -16,6 +16,7 @@ namespace skyline::service::nvdrv::device::nvhost {
       private:
         core::ChannelType channelType; //!< The specific host1x channel that this instance refers to
         std::mutex channelMutex; //!< Synchronises submit operations
+        bool executionWarningShown{}; //!< Report the inherited NVDEC/VIC execution limitation once per channel
 
       public:
         /**
@@ -29,7 +30,7 @@ namespace skyline::service::nvdrv::device::nvhost {
 
         /**
          * @brief Describes a single memory relocation that can be applied to a pinned handle before command submission
-         * @note These are used like: patchMem[patchOffset] = pinMem.iova + pinOffset
+         * @note Writes a u32 at patchMem + patchOffset: (pinMem.iova + pinOffset) >> relocShift
          */
         struct SubmitReloc {
             core::NvMap::Handle::Id patchMem;

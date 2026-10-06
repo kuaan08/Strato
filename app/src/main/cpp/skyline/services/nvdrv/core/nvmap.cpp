@@ -120,6 +120,9 @@ namespace skyline::service::nvdrv::core {
             return 0;
 
         std::scoped_lock lock(handleDesc->mutex);
+        if (!handleDesc->allocated || !handleDesc->address || !handleDesc->alignedSize ||
+            handleDesc->alignedSize > UINT32_MAX || handleDesc->pins == INT32_MAX)
+            return 0;
         if (!handleDesc->pins) {
             // If we're in the unmap queue we can just remove ourselves and return since we're already mapped
             {
@@ -139,14 +142,15 @@ namespace skyline::service::nvdrv::core {
             while (!(address = smmuAllocator.Allocate(static_cast<u32>(handleDesc->alignedSize)))) {
                 // Free handles until the allocation succeeds
                 std::scoped_lock queueLock(unmapQueueLock);
-                if (auto freeHandleDesc{unmapQueue.front()}) {
-                    // Handles in the unmap queue are guaranteed not to be pinned so don't bother checking if they are before unmapping
-                    std::scoped_lock freeLock(freeHandleDesc->mutex);
-                    if (handleDesc->pinVirtAddress)
-                        UnmapHandle(*freeHandleDesc);
-                } else {
-                    throw exception("Ran out of SMMU address space!");
-                }
+                if (unmapQueue.empty())
+                    return 0;
+                auto freeHandleDesc{unmapQueue.front()};
+                // FreeHandle takes the handle lock before the queue lock. Do not block in
+                // the opposite order here; the caller can retry this allocation instead.
+                std::unique_lock freeLock(freeHandleDesc->mutex, std::try_to_lock);
+                if (!freeLock.owns_lock())
+                    return 0;
+                UnmapHandle(*freeHandleDesc);
             }
 
             state.soc->smmu.Map(address, reinterpret_cast<u8 *>(handleDesc->address), static_cast<u32>(handleDesc->alignedSize));

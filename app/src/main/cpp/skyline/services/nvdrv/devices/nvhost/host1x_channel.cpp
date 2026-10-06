@@ -27,13 +27,99 @@ namespace skyline::service::nvdrv::device::nvhost {
         LOGD("numCmdBufs: {}, numRelocs: {}, numSyncpointIncrs: {}, numFenceThresholds: {}",
                             cmdBufs.size(), relocs.size(), syncpointIncrs.size(), fenceThresholds.size());
 
-        if (fenceThresholds.size() > syncpointIncrs.size())
+        if (fenceThresholds.size() > syncpointIncrs.size() || relocs.size() != relocShifts.size())
             return PosixResult::InvalidArgument;
 
-        if (!relocs.empty())
-            throw exception("Relocations are unimplemented!");
-
         std::scoped_lock lock(channelMutex);
+
+        // Validate the entire request before changing command words or publishing fences.
+        for (const auto &incr : syncpointIncrs)
+            if (incr.syncpointId >= soc::host1x::SyncpointCount || !core.syncpointManager.IsSyncpointAllocated(incr.syncpointId))
+                return PosixResult::InvalidArgument;
+
+        using Handle = core::NvMap::Handle;
+        std::unordered_map<Handle::Id, std::shared_ptr<Handle>> handles;
+        auto getHandle = [&](Handle::Id id) -> std::shared_ptr<Handle> {
+            auto found{handles.find(id)};
+            if (found != handles.end())
+                return found->second;
+            auto handle{core.nvMap.GetHandle(id)};
+            if (!handle)
+                return nullptr;
+            std::scoped_lock handleLock(handle->mutex);
+            if (!handle->allocated || !handle->address || !handle->size ||
+                handle->size > UINT32_MAX || handle->alignedSize > UINT32_MAX ||
+                handle->address > UINT64_MAX - handle->size)
+                return nullptr;
+            handles.emplace(id, handle);
+            return handle;
+        };
+
+        for (const auto &cmdBuf : cmdBufs) {
+            auto handle{getHandle(cmdBuf.mem)};
+            if (!handle || (cmdBuf.offset & 3) || cmdBuf.offset > handle->size ||
+                static_cast<u64>(cmdBuf.words) * sizeof(u32) > handle->size - cmdBuf.offset)
+                return PosixResult::InvalidArgument;
+        }
+
+        struct Patch { u8 *destination; Handle::Id target; u32 offset, shift, value; };
+        std::vector<Patch> patches;
+        patches.reserve(relocs.size());
+        for (size_t i{}; i < relocs.size(); ++i) {
+            const auto &reloc{relocs[i]};
+            auto patchHandle{getHandle(reloc.patchMem)};
+            auto pinHandle{getHandle(reloc.pinMem)};
+            if (!patchHandle || !pinHandle || (reloc.patchOffset & 3) || relocShifts[i] >= 32 ||
+                reloc.patchOffset > patchHandle->size || sizeof(u32) > patchHandle->size - reloc.patchOffset ||
+                reloc.pinOffset >= pinHandle->size)
+                return PosixResult::InvalidArgument;
+
+            // Relocation offsets are relative to the nvmap allocation, not the gather start.
+            bool inGather{std::any_of(cmdBufs.begin(), cmdBufs.end(), [&](const auto &cmdBuf) {
+                return cmdBuf.mem == reloc.patchMem && reloc.patchOffset >= cmdBuf.offset &&
+                       static_cast<u64>(reloc.patchOffset - cmdBuf.offset) + sizeof(u32) <= static_cast<u64>(cmdBuf.words) * sizeof(u32);
+            })};
+            if (!inGather)
+                return PosixResult::InvalidArgument;
+            patches.push_back({reinterpret_cast<u8 *>(patchHandle->address + reloc.patchOffset),
+                               reloc.pinMem, reloc.pinOffset, relocShifts[i], 0});
+        }
+
+        // One temporary pin per distinct allocation. MapBuffer pins remain owned by the guest.
+        // If asynchronous channel execution is enabled, move this ownership to the queued job.
+        struct SubmitPins {
+            core::NvMap &nvMap;
+            std::vector<Handle::Id> ids;
+            ~SubmitPins() {
+                for (auto id : ids)
+                    nvMap.UnpinHandle(id);
+            }
+        } pins{core.nvMap, {}};
+        pins.ids.reserve(handles.size());
+        std::unordered_map<Handle::Id, u32> addresses;
+        for (const auto &[id, handle] : handles) {
+            u32 address{core.nvMap.PinHandle(id)};
+            if (!address)
+                return PosixResult::TryAgain;
+            pins.ids.push_back(id);
+            addresses.emplace(id, address);
+        }
+        for (auto &patch : patches) {
+            u64 address{static_cast<u64>(addresses.at(patch.target)) + patch.offset};
+            if (address > UINT32_MAX)
+                return PosixResult::InvalidArgument;
+            patch.value = static_cast<u32>(address) >> patch.shift;
+        }
+        for (const auto &patch : patches)
+            std::memcpy(patch.destination, &patch.value, sizeof(patch.value));
+
+        if (!patches.empty())
+            LOGD("Applied {} Host1x relocations for channel {}", patches.size(), static_cast<u32>(channelType));
+
+        if (!cmdBufs.empty() && !executionWarningShown) {
+            LOGW("Host1x channel {}: engine command execution is still unimplemented; address relocations do not provide NVDEC/VIC video output", static_cast<u32>(channelType));
+            executionWarningShown = true;
+        }
 
         for (size_t i{}; i < syncpointIncrs.size(); i++) {
             const auto &incr{syncpointIncrs[i]};
@@ -49,9 +135,7 @@ namespace skyline::service::nvdrv::device::nvhost {
         }
 
         for (const auto &cmdBuf : cmdBufs) {
-            auto handleDesc{core.nvMap.GetHandle(cmdBuf.mem)};
-            if (!handleDesc)
-                throw exception("Invalid handle passed for a command buffer!");
+            const auto &handleDesc{handles.at(cmdBuf.mem)};
 
             u64 gatherAddress{handleDesc->address + cmdBuf.offset};
             LOGD("Submit gather, CPU address: 0x{:X}, words: 0x{:X}", gatherAddress, cmdBuf.words);

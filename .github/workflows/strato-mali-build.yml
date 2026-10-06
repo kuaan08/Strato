@@ -42,6 +42,11 @@ jobs:
       - name: Test Horizon memory attributes (ASan/UBSan)
         run: python3 tests/test_memory_attributes.py
 
+      - name: Test Host1x relocations (ASan/UBSan)
+        run: |
+          python3 tests/test_host1x_relocations.py
+          python3 tests/test_nvmap_pins.py
+
       - name: Test NCA compressed storage (ASan/UBSan)
         run: |
           sudo apt-get update && sudo apt-get install -y liblz4-dev
