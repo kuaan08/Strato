@@ -31,35 +31,12 @@ object FirmwareInstaller {
             val version = fetchFirmwareVersion(stagedFirmware.path, keys)
             if (version.isBlank()) throw IOException("Firmware could not be verified with the installed prod.keys")
             extractFonts(stagedFirmware.path, keys, stagedFonts.path)
-            replaceDirectories(listOf(stagedFirmware to firmware, stagedFonts to fonts), id)
+            DirectoryTransaction.replace(listOf(stagedFirmware to firmware, stagedFonts to fonts), id)
             return version
         } finally {
             stagedFirmware.deleteRecursively()
             stagedFonts.deleteRecursively()
         }
-    }
-
-    private fun replaceDirectories(entries: List<Pair<File, File>>, id: String) {
-        val backups = mutableListOf<Pair<File, File>>()
-        val installed = mutableListOf<File>()
-        try {
-            for ((source, target) in entries) {
-                if (target.exists()) {
-                    val backup = File(target.parentFile, ".${target.name}-backup-$id")
-                    if (!target.renameTo(backup)) throw IOException("Unable to preserve installed ${target.name}")
-                    backups += backup to target
-                }
-                if (!source.renameTo(target)) throw IOException("Unable to install ${target.name}")
-                installed += target
-            }
-        } catch (error: Exception) {
-            installed.asReversed().forEach { it.deleteRecursively() }
-            backups.asReversed().forEach { (backup, target) ->
-                if (!backup.renameTo(target)) error.addSuppressed(IOException("Previous files preserved at ${backup.path}"))
-            }
-            throw error
-        }
-        backups.forEach { (backup, _) -> backup.deleteRecursively() }
     }
 
     private external fun fetchFirmwareVersion(systemArchivesPath: String, keysPath: String): String
