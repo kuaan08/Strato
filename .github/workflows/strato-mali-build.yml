@@ -45,6 +45,7 @@ jobs:
       - name: Test Host1x relocations (ASan/UBSan)
         run: |
           python3 tests/test_host1x_relocations.py
+          python3 tests/test_host1x_commands.py
           python3 tests/test_nvmap_pins.py
 
       - name: Test NCA compressed storage (ASan/UBSan)

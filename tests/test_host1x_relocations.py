@@ -20,13 +20,15 @@ source = r'''
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+#include <soc/host1x/command_decoder.h>
 using u8=uint8_t;using u32=uint32_t;using u64=uint64_t;
 using std::span;
 #define LOGD(...) ((void)0)
 #define LOGW(...) ((void)0)
+#define LOGI(...) ((void)0)
 namespace skyline::service::nvdrv::device::nvhost {
 enum class PosixResult {Success,InvalidArgument,TryAgain};
-namespace soc::host1x {constexpr size_t SyncpointCount=192;}
+namespace soc::host1x {constexpr size_t SyncpointCount=192;using ::skyline::soc::host1x::DecodeCommands;}
 namespace core {
 struct NvMap {
  struct Handle {
@@ -56,6 +58,7 @@ struct Host1xChannel {
  struct SubmitReloc {u32 patchMem,patchOffset,pinMem,pinOffset;};
  struct SubmitSyncpointIncr {u32 syncpointId,numIncrs;};
  Core core;State state;std::mutex channelMutex;u32 channelType=3;bool executionWarningShown=false;
+ u32 videoTraceClass=1,videoTraceSubmits=0,videoTraceMethods=0;std::array<u32,2> videoTraceStoredMethods{};
  PosixResult Submit(span<SubmitCmdBuf>,span<SubmitReloc>,span<u32>,span<SubmitSyncpointIncr>,span<u32>);
 };
 METHOD
@@ -110,6 +113,7 @@ with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / "test.cpp").write_text(source)
     subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-g", "-pthread",
+                    "-I" + str(root / "app/src/main/cpp/skyline"),
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
                     str(path / "test.cpp"), "-o", str(path / "test")], check=True)
     subprocess.run([str(path / "test")], check=True)

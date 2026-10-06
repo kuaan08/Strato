@@ -17,6 +17,10 @@ namespace skyline::service::nvdrv::device::nvhost {
         core::ChannelType channelType; //!< The specific host1x channel that this instance refers to
         std::mutex channelMutex; //!< Synchronises submit operations
         bool executionWarningShown{}; //!< Report the inherited NVDEC/VIC execution limitation once per channel
+        u32 videoTraceClass{1};
+        u32 videoTraceSubmits{};
+        u32 videoTraceMethods{};
+        std::array<u32, 2> videoTraceStoredMethods{};
 
       public:
         /**

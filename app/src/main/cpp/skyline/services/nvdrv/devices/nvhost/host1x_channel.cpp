@@ -2,6 +2,7 @@
 // Copyright © 2021 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include <soc.h>
+#include <soc/host1x/command_decoder.h>
 #include <services/nvdrv/devices/deserialisation/deserialisation.h>
 #include "host1x_channel.h"
 
@@ -141,9 +142,33 @@ namespace skyline::service::nvdrv::device::nvhost {
             LOGD("Submit gather, CPU address: 0x{:X}, words: 0x{:X}", gatherAddress, cmdBuf.words);
 
             span gather(reinterpret_cast<u32 *>(gatherAddress), cmdBuf.words);
+            // Diagnostic branch: inspect commands without changing execution or fence behavior.
+            // Raw data remains on the device; only register writes and metadata reach the log.
+            if (videoTraceSubmits < 32 && videoTraceMethods < 2048) {
+                LOGI("VideoTrace channel={} submit={} gather_words={} relocations={}",
+                     static_cast<u32>(channelType), videoTraceSubmits, cmdBuf.words, relocs.size());
+                try {
+                    soc::host1x::DecodeCommands(gather.first(std::min<size_t>(gather.size(), 8192)), videoTraceClass, [&](u32 cls, u32 method, u32 argument) {
+                        if (++videoTraceMethods > 2048)
+                            return;
+                        LOGI("VideoTrace class=0x{:X} method=0x{:X} argument=0x{:X}", cls, method, argument);
+                        if (cls != 0xf0 && cls != 0x5d)
+                            return;
+                        auto &stored{videoTraceStoredMethods[cls == 0xf0 ? 0 : 1]};
+                        if (method == 0x10)
+                            stored = argument;
+                        else if (method == 0x11)
+                            LOGI("VideoTrace {} register_raw=0x{:X} value=0x{:X}", cls == 0xf0 ? "NVDEC" : "VIC", stored, argument);
+                    });
+                } catch (const std::runtime_error &error) {
+                    LOGW("VideoTrace stopped at unsupported or malformed gather: {}", error.what());
+                }
+            }
             // Skip submitting the cmdbufs as no functionality is implemented
             // state.soc->host1x.channels[static_cast<size_t>(channelType)].Push(gather);
         }
+
+        ++videoTraceSubmits;
 
         return PosixResult::Success;
     }
