@@ -42,6 +42,11 @@ jobs:
       - name: Test Horizon memory attributes (ASan/UBSan)
         run: python3 tests/test_memory_attributes.py
 
+      - name: Test NCA compressed storage (ASan/UBSan)
+        run: |
+          sudo apt-get update && sudo apt-get install -y liblz4-dev
+          python3 tests/test_compressed_storage.py
+
       - name: Install Java 17
         uses: actions/setup-java@v4
         with:

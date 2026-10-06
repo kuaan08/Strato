@@ -143,9 +143,11 @@ namespace skyline {
                 u32 generation; //!< The generation of the NCA section
                 u32 secureValue; //!< The secure value of the section
                 u8 _pad2_[0x30]; //!< SparseInfo
-                u8 _pad3_[0x88];
+                BktrHeader compression;
+                u8 _pad3_[0x68];
             };
             static_assert(sizeof(NcaSectionHeader) == 0x200);
+            static_assert(offsetof(NcaSectionHeader, compression) == 0x178);
 
             struct NcaHeader {
                 std::array<u8, 0x100> fixed_key_sig; //!< An RSA-PSS signature over the header with fixed key

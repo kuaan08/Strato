@@ -6,6 +6,7 @@
 
 #include "ctr_encrypted_backing.h"
 #include "region_backing.h"
+#include "compressed_backing.h"
 #include "partition_filesystem.h"
 #include "nca.h"
 #include "rom_filesystem.h"
@@ -93,6 +94,8 @@ namespace skyline::vfs {
         size_t size{sectionHeader.integrityHashInfo.levels.back().size};
         if (offset > romFsSection->size || size > romFsSection->size - offset) throw exception("Invalid RomFS level bounds");
         romFs = std::make_shared<RegionBacking>(romFsSection, offset, size);
+        if (sectionHeader.compression.offset || sectionHeader.compression.size || sectionHeader.compression.entries)
+            romFs = std::make_shared<CompressedBacking>(romFs, sectionHeader.compression);
     }
 
     std::shared_ptr<Backing> NCA::CreateBacking(const NcaSectionHeader &sectionHeader, std::shared_ptr<Backing> rawBacking, size_t offset) {
