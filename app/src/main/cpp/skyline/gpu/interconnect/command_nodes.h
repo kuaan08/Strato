@@ -30,7 +30,7 @@ namespace skyline::gpu::interconnect::node {
     struct RenderPassNode {
       private:
         std::vector<vk::ImageView> attachments;
-        std::vector<TextureView *> attachmentViews;
+        std::vector<std::shared_ptr<TextureView>> attachmentViews;
         std::vector<std::shared_ptr<ScaledRenderTarget>> scaledTargets;
         bool PrepareResolution(GPU &gpu);
         std::vector<vk::FramebufferAttachmentImageInfo> attachmentInfo;

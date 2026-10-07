@@ -15,7 +15,7 @@ namespace skyline::gpu::interconnect::node {
         if (attachment == attachments.end()) {
             // If we cannot find any matches for the specified attachment, we add it as a new one
             attachments.push_back(vkView);
-            attachmentViews.push_back(view);
+            if (!gpu.resolutionScale.IsNative()) attachmentViews.push_back(view->shared_from_this());
 
             if (gpu.traits.supportsImagelessFramebuffers)
                 attachmentInfo.push_back(vk::FramebufferAttachmentImageInfo{
@@ -340,7 +340,7 @@ namespace skyline::gpu::interconnect::node {
         return true;
     }
 
-    static vk::Filter ResolutionFilter(TextureView *view, GPU &gpu) {
+    static vk::Filter ResolutionFilter(const std::shared_ptr<TextureView> &view, GPU &gpu) {
         const auto features{gpu.vkPhysicalDevice.getFormatProperties(view->texture->format->vkFormat).optimalTilingFeatures};
         return (view->range.aspectMask & vk::ImageAspectFlagBits::eColor) &&
             (features & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) ? vk::Filter::eLinear : vk::Filter::eNearest;
@@ -428,6 +428,7 @@ namespace skyline::gpu::interconnect::node {
                     auto view{attachmentViews[i]};
                     const auto &target{scaledTargets[i]};
                     cycle->AttachObject(target);
+                    cycle->AttachObject(view);
                     resolution::Barrier(commandBuffer, view->texture->GetBacking(), view->range.aspectMask);
                     resolution::Barrier(commandBuffer, target->image.vkImage, view->range.aspectMask, !target->initialized);
                     target->initialized = true;
