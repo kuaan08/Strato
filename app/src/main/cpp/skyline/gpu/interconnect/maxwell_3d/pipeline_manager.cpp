@@ -665,6 +665,24 @@ namespace skyline::gpu::interconnect::maxwell3d {
     Pipeline::Pipeline(GPU &gpu, PipelineStateAccessor &accessor, const PackedPipelineState &packedState)
         : sourcePackedState{packedState} {
         auto shaderStages{MakePipelineShaders(gpu, accessor, sourcePackedState)};
+        supportsResolutionScaling = packedState.topology == engine::DrawTopology::Triangles ||
+            packedState.topology == engine::DrawTopology::TriangleStrip ||
+            packedState.topology == engine::DrawTopology::TriangleFan ||
+            packedState.topology == engine::DrawTopology::Quads;
+        for (const auto &stage : shaderStages) {
+            if (stage.stage == vk::ShaderStageFlagBits{}) continue;
+            const auto &info{stage.info};
+            if (info.stores_global_memory ||
+                std::any_of(info.storage_buffers_descriptors.begin(), info.storage_buffers_descriptors.end(), [](const auto &desc) { return desc.is_written; }) ||
+                !info.image_descriptors.empty() ||
+                !info.image_buffer_descriptors.empty() || info.stores_sample_mask ||
+                info.uses_sample_id || info.uses_render_area || info.requires_layer_emulation)
+                supportsResolutionScaling = false;
+            if (stage.stage == vk::ShaderStageFlagBits::eFragment &&
+                (info.loads[Shader::IR::Attribute::PositionX] || info.loads[Shader::IR::Attribute::PositionY] ||
+                 info.loads_indexed_attributes))
+                supportsResolutionScaling = false;
+        }
         descriptorInfo = MakePipelineDescriptorInfo(shaderStages, gpu.traits.quirks.needsIndividualTextureBindingWrites);
         compiledPipeline = MakeCompiledPipeline(gpu, sourcePackedState, shaderStages, descriptorInfo.descriptorSetLayoutBindings);
 
@@ -1022,4 +1040,5 @@ namespace skyline::gpu::interconnect::maxwell3d {
         return pipeline;
     }
 }
+
 

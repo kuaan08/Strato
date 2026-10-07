@@ -118,6 +118,10 @@ namespace skyline::gpu::interconnect::maxwell3d {
     Queries::Queries(GPU &gpu) : counters{{{gpu.vkDevice, vk::QueryType::eOcclusion}}} {}
 
     void Queries::Query(InterconnectContext &ctx, soc::gm20b::IOVA address, CounterType type, std::optional<u64> timestamp) {
+        if (!ctx.gpu.resolutionScale.IsNative()) {
+            ctx.gpu.resolutionQueriesSeen.store(true);
+            ctx.executor.DisableResolutionScalingForCurrentPass();
+        }
         view.Update(ctx, address, timestamp ? 16 : 4);
         usedQueryAddresses.emplace(u64{address});
         ctx.executor.AttachBuffer(*view);
@@ -130,6 +134,10 @@ namespace skyline::gpu::interconnect::maxwell3d {
     }
 
     void Queries::ResetCounter(InterconnectContext &ctx, CounterType type) {
+        if (!ctx.gpu.resolutionScale.IsNative()) {
+            ctx.gpu.resolutionQueriesSeen.store(true);
+            ctx.executor.DisableResolutionScalingForCurrentPass();
+        }
         auto &counter{counters[static_cast<u32>(type)]};
         counter.End(ctx);
         counter.Begin(ctx);
@@ -145,3 +153,4 @@ namespace skyline::gpu::interconnect::maxwell3d {
         return usedQueryAddresses.contains(u64{address});
     }
 }
+

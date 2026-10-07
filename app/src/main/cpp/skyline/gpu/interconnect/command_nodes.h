@@ -4,6 +4,7 @@
 #pragma once
 
 #include <gpu.h>
+#include <gpu/render_resolution.h>
 
 namespace skyline::gpu::interconnect::node {
     /**
@@ -29,6 +30,9 @@ namespace skyline::gpu::interconnect::node {
     struct RenderPassNode {
       private:
         std::vector<vk::ImageView> attachments;
+        std::vector<TextureView *> attachmentViews;
+        std::vector<std::shared_ptr<ScaledRenderTarget>> scaledTargets;
+        bool PrepareResolution(GPU &gpu);
         std::vector<vk::FramebufferAttachmentImageInfo> attachmentInfo;
         std::vector<vk::AttachmentDescription> attachmentDescriptions;
 
@@ -51,6 +55,7 @@ namespace skyline::gpu::interconnect::node {
         vk::PipelineStageFlags dependencySrcStageMask;
         vk::PipelineStageFlags dependencyDstStageMask;
 
+        bool allowResolutionScaling{};
         vk::Rect2D renderArea;
         std::vector<vk::ClearValue> clearValues;
 
@@ -86,6 +91,8 @@ namespace skyline::gpu::interconnect::node {
          * @note We require a subpass to be attached during this as the clear will not take place unless it's referenced by a subpass
          */
         bool ClearDepthStencilAttachment(const vk::ClearDepthStencilValue &value, GPU& gpu);
+
+        void ResolveResolution(vk::raii::CommandBuffer &commandBuffer, GPU &gpu);
 
         vk::RenderPass operator()(vk::raii::CommandBuffer &commandBuffer, const std::shared_ptr<FenceCycle> &cycle, GPU &gpu);
     };
@@ -132,3 +139,4 @@ namespace skyline::gpu::interconnect::node {
 
     using NodeVariant = std::variant<FunctionNode, CheckpointNode, RenderPassNode, NextSubpassNode, SubpassFunctionNode, NextSubpassFunctionNode, RenderPassEndNode>; //!< A variant encompassing all command nodes types
 }
+

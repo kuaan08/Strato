@@ -33,7 +33,7 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
     private var section = "graphics"
     private var searchQuery = ""
     private val availability = mutableMapOf<String, Boolean>()
-    private val graphicsKeys = setOf("perf_stats", "max_refresh_rate", "orientation", "aspect_ratio",
+    private val graphicsKeys = setOf("perf_stats", "max_refresh_rate", "orientation", "aspect_ratio", "resolution_scale",
         "respect_display_cutout", "enable_foldable_layout", "show_pause_button", "disable_shader_cache")
     private val folderKeys = setOf("search_location", "filter_invalid_files")
     private val gpuKeys = setOf("force_triple_buffering", "disable_frame_throttling", "executor_slot_count_scale",
@@ -144,3 +144,4 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
         outState.putString("settings_query", searchQuery)
     }
 }
+

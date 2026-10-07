@@ -4,6 +4,7 @@
 #pragma once
 
 #include <future>
+#include <gpu/render_resolution.h>
 #include <gpu/interconnect/command_executor.h>
 #include "common.h"
 
@@ -132,7 +133,8 @@ namespace skyline::gpu::interconnect {
 
     struct SetViewportCmdImpl {
         void Record(GPU &gpu, vk::raii::CommandBuffer &commandBuffer) {
-            commandBuffer.setViewport(index, viewport);
+            renderResolutionState.viewports.at(index) = viewport;
+            commandBuffer.setViewport(index, renderResolutionState.Transform(viewport));
         }
 
         u32 index;
@@ -142,7 +144,8 @@ namespace skyline::gpu::interconnect {
 
     struct SetScissorCmdImpl {
         void Record(GPU &gpu, vk::raii::CommandBuffer &commandBuffer) {
-            commandBuffer.setScissor(index, scissor);
+            renderResolutionState.scissors.at(index) = scissor;
+            commandBuffer.setScissor(index, renderResolutionState.Transform(scissor));
         }
 
         u32 index;
@@ -502,3 +505,4 @@ namespace skyline::gpu::interconnect {
         }
     };
 }
+

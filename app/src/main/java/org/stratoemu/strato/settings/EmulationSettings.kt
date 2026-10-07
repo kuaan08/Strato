@@ -39,6 +39,7 @@ class EmulationSettings private constructor(context : Context, prefName : String
     var maxRefreshRate by sharedPreferences(context, false, prefName = prefName)
     var orientation by sharedPreferences(context, ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE, prefName = prefName)
     var aspectRatio by sharedPreferences(context, 0, prefName = prefName)
+    var resolutionScale by sharedPreferences(context, 2, prefName = prefName)
     var respectDisplayCutout by sharedPreferences(context, false, prefName = prefName)
     var enableFoldableLayout by sharedPreferences(context, false, prefName = prefName)
     var showPauseButton by sharedPreferences(context, false, prefName = prefName)
@@ -114,3 +115,4 @@ class EmulationSettings private constructor(context : Context, prefName : String
         }
     }
 }
+

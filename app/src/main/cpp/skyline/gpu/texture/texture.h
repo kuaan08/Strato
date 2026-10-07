@@ -13,6 +13,7 @@
 #include <gpu/usage_tracker.h>
 
 namespace skyline::gpu {
+    struct ScaledRenderTarget;
     namespace texture {
         enum class RenderPassUsage : u8 {
             None,
@@ -483,6 +484,7 @@ namespace skyline::gpu {
         size_t deswizzledSurfaceSize{}; //!< The size of the guest surface with linear tiling, calculated with the guest format which may differ from the host format
         size_t surfaceSize{}; //!< The size of the entire surface given linear tiling, this contains all mip levels and layers
         vk::SampleCountFlagBits sampleCount;
+        std::shared_ptr<ScaledRenderTarget> scaledRenderTarget; //!< Accessed only by the command recording thread
         bool replaced{};
 
         /**
@@ -639,3 +641,4 @@ namespace skyline::gpu {
         void PopulateReadBarrier(vk::PipelineStageFlagBits dstStage, vk::PipelineStageFlags &srcStageMask, vk::PipelineStageFlags &dstStageMask);
     };
 }
+

@@ -229,6 +229,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
       public:
         GraphicsPipelineAssembler::CompiledPipeline compiledPipeline;
+        bool supportsResolutionScaling{};
 
         Pipeline(GPU &gpu, PipelineStateAccessor &accessor, const PackedPipelineState &packedState);
 
@@ -277,3 +278,4 @@ namespace skyline::gpu::interconnect::maxwell3d {
         Pipeline *FindOrCreate(InterconnectContext &ctx, Textures &textures, ConstantBufferSet &constantBuffers, const PackedPipelineState &packedState, const std::array<ShaderBinary, engine::PipelineCount> &shaderBinaries);
     };
 }
+

@@ -410,6 +410,7 @@ namespace skyline::gpu {
           vkPhysicalDevice(CreatePhysicalDevice(vkInstance)),
           vkDevice(CreateDevice(vkContext, vkPhysicalDevice, vkQueueFamilyIndex, traits, &adrenotoolsImportMapping)),
           vkQueue(vkDevice, vkQueueFamilyIndex, 0),
+          resolutionScale(resolution::Scale::FromSetting(*state.settings->resolutionScale)),
           memory(*this),
           scheduler(state, *this),
           presentation(state, *this),
@@ -420,7 +421,9 @@ namespace skyline::gpu {
           helperShaders(*this, state.os->assetFileSystem),
           renderPassCache(*this),
           framebufferCache(*this),
-          debugTracingBuffer(memory.AllocateBuffer(DebugTracingBufferSize)) {}
+          debugTracingBuffer(memory.AllocateBuffer(DebugTracingBufferSize)) {
+        LOGI("Internal resolution scale: {}x (experimental render-pass scaling)", resolutionScale.Factor());
+    }
 
     void GPU::Initialise() {
         std::string titleId{state.loader->nacp->GetSaveDataOwnerId()};
@@ -434,3 +437,4 @@ namespace skyline::gpu {
         graphicsPipelineManager.emplace(*this, *state.jvm);
     }
 }
+

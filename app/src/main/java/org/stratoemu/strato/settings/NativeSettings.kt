@@ -46,7 +46,8 @@ data class NativeSettings(
 
     // Debug
     var logLevel : Int,
-    var validationLayer : Boolean
+    var validationLayer : Boolean,
+    var resolutionScale : Int = 2
 ) {
     constructor(context : Context, pref : EmulationSettings) : this(
         pref.isDocked,
@@ -70,7 +71,8 @@ data class NativeSettings(
         pref.enableFastReadbackWrites,
         pref.disableSubgroupShuffle,
         pref.logLevel,
-        BuildConfig.BUILD_TYPE != "release" && pref.validationLayer
+        BuildConfig.BUILD_TYPE != "release" && pref.validationLayer,
+        pref.resolutionScale
     )
 
     /**
@@ -78,3 +80,4 @@ data class NativeSettings(
      */
     external fun updateNative()
 }
+

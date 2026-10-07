@@ -66,6 +66,15 @@
             app:key="aspect_ratio"
             app:title="@string/aspect_ratio"
             app:useSimpleSummaryProvider="true" />
+        <org.stratoemu.strato.preference.IntegerListPreference
+            android:defaultValue="2"
+            android:entries="@array/resolution_scale_entries"
+            android:entryValues="@array/resolution_scale_values"
+            android:summary="@string/resolution_scale_description"
+            app:key="resolution_scale"
+            app:refreshRequired="true"
+            app:title="@string/resolution_scale"
+            app:useSimpleSummaryProvider="true" />
         <SwitchPreferenceCompat
             android:defaultValue="false"
             android:summaryOff="@string/respect_display_cutout_disabled"
@@ -194,3 +203,4 @@
             app:title="@string/validation_layer" />
     </PreferenceCategory>
 </androidx.preference.PreferenceScreen>
+

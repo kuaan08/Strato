@@ -9,8 +9,18 @@ source=r'''
 #include <cassert>
 #include <climits>
 #include "gpu/resolution_scaling.h"
+#include "gpu/resolution_budget.h"
 using skyline::gpu::resolution::Scale;
 int main(){
+ std::atomic<std::uint64_t> allocated{0};
+ {
+  skyline::gpu::resolution::Reservation full(allocated, skyline::gpu::resolution::Reservation::Limit);
+  assert(full.reserved && allocated == skyline::gpu::resolution::Reservation::Limit);
+  skyline::gpu::resolution::Reservation overflow(allocated, 1); assert(!overflow.reserved);
+ }
+ assert(allocated == 0);
+ skyline::gpu::resolution::Reservation tooBig(allocated, UINT64_MAX); assert(!tooBig.reserved);
+
  for(int i=0;i<7;++i){
   auto scale=Scale::FromSetting(i);
   auto e=scale.TryExtent({1280,720},{4096,4096});

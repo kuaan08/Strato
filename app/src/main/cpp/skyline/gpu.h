@@ -4,7 +4,9 @@
 #pragma once
 
 #include <adrenotools/driver.h>
+#include <atomic>
 #include "gpu/trait_manager.h"
+#include "gpu/resolution_scaling.h"
 #include "gpu/memory_manager.h"
 #include "gpu/command_scheduler.h"
 #include "gpu/presentation_engine.h"
@@ -46,6 +48,13 @@ namespace skyline::gpu {
         std::mutex queueMutex; //!< Synchronizes access to the queue as it is externally synchronized
         vk::raii::Queue vkQueue; //!< A Vulkan Queue supporting graphics and compute operations
 
+        const resolution::Scale resolutionScale; //!< Fixed for this emulation session
+        std::atomic<bool> resolutionQueriesSeen{}; //!< Precise pixel counters require native rasterization
+        bool resolutionAllocationFailed{}; //!< Stop optional allocations after an allocation failure
+        std::array<u64, 5> resolutionPassCounts{};
+        u64 resolutionAttachmentCount{};
+        std::atomic<u64> resolutionAllocatedBytes{};
+
         memory::MemoryManager memory;
         CommandScheduler scheduler;
         PresentationEngine presentation;
@@ -79,3 +88,4 @@ namespace skyline::gpu {
         void Initialise();
     };
 }
+
