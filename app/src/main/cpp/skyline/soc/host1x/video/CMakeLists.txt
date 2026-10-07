@@ -3,6 +3,15 @@ include(ExternalProject)
 set(FFMPEG_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/ffmpeg")
 file(MAKE_DIRECTORY "${FFMPEG_PREFIX}/include")
 get_filename_component(NDK_BIN "${CMAKE_C_COMPILER}" DIRECTORY)
+# CMAKE_SYSTEM_VERSION can be reset by dependency projects; the NDK platform
+# level is the Android API selected by Gradle/the Android toolchain.
+if(NOT ANDROID_PLATFORM_LEVEL MATCHES "^[0-9]+$" OR ANDROID_PLATFORM_LEVEL LESS 21)
+    message(FATAL_ERROR "Invalid Android API for the arm64 FFmpeg build: ${ANDROID_PLATFORM_LEVEL}")
+endif()
+set(FFMPEG_CC "${NDK_BIN}/aarch64-linux-android${ANDROID_PLATFORM_LEVEL}-clang")
+if(NOT EXISTS "${FFMPEG_CC}")
+    message(FATAL_ERROR "FFmpeg Android compiler not found: ${FFMPEG_CC}")
+endif()
 find_program(VIDEO_MAKE make REQUIRED)
 ExternalProject_Add(strato_video_ffmpeg
     URL https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n6.1.2.tar.gz
@@ -10,7 +19,7 @@ ExternalProject_Add(strato_video_ffmpeg
     CONFIGURE_COMMAND <SOURCE_DIR>/configure
         --prefix=${FFMPEG_PREFIX}
         --enable-cross-compile --target-os=android --arch=aarch64
-        --cc=${NDK_BIN}/aarch64-linux-android${CMAKE_SYSTEM_VERSION}-clang
+        --cc=${FFMPEG_CC}
         --ar=${CMAKE_AR} --ranlib=${CMAKE_RANLIB}
         --enable-pic --enable-static --disable-shared --enable-pthreads
         --disable-programs --disable-doc --disable-debug --disable-network
