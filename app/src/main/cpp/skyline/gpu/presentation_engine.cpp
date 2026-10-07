@@ -2,7 +2,6 @@
 // Copyright © 2020 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include <android/native_window_jni.h>
-#include <android/choreographer.h>
 #include <common/settings.h>
 #include <common/signal.h>
 #include <jvm.h>
@@ -28,7 +27,7 @@ namespace skyline::gpu {
           acquireSemaphores{util::MakeFilledArray<vk::raii::Semaphore, MaxSwapchainImageCount>(gpu.vkDevice, vk::SemaphoreCreateInfo{})},
           presentationTrack{static_cast<u64>(trace::TrackIds::Presentation), perfetto::ProcessTrack::Current()},
           vsyncEvent{std::make_shared<kernel::type::KEvent>(state, true)},
-          choreographerThread{&PresentationEngine::ChoreographerThread, this},
+          vsyncThread{&PresentationEngine::VsyncThread, this},
           presentationThread{&PresentationEngine::PresentationThread, this} {
         auto desc{presentationTrack.Serialize()};
         desc.set_name("Presentation");
@@ -40,43 +39,29 @@ namespace skyline::gpu {
         if (!env->IsSameObject(jSurface, nullptr))
             env->DeleteGlobalRef(jSurface);
 
-        if (choreographerThread.joinable()) {
-            if (choreographerLooper) {
-                choreographerStop = true;
-                ALooper_wake(choreographerLooper);
-            }
-            choreographerThread.join();
+        {
+            std::scoped_lock lock{vsyncMutex};
+            vsyncStop = true;
         }
+        vsyncCondition.notify_all();
+        if (vsyncThread.joinable())
+            vsyncThread.join();
     }
 
-    void PresentationEngine::ChoreographerCallback(int64_t frameTimeNanos, PresentationEngine *engine) {
-        // If the duration of this cycle deviates by ±0.5ms from the current refresh cycle duration then we reevaluate it
-        i64 cycleLength{frameTimeNanos - engine->lastChoreographerTime};
-        if (std::abs(cycleLength - engine->refreshCycleDuration) > (constant::NsInMillisecond / 2)) {
-            if (engine->window)
-                engine->window->perform(engine->window, NATIVE_WINDOW_GET_REFRESH_CYCLE_DURATION, &engine->refreshCycleDuration);
-            else
-                engine->refreshCycleDuration = cycleLength;
-        }
-
-        // Record the current cycle's timestamp and signal the V-Sync event to notify the game that a frame has been displayed
-        engine->lastChoreographerTime = frameTimeNanos;
-        if (!engine->skipSignal.exchange(false))
-            engine->vsyncEvent->Signal();
-
-        // Post the frame callback to be triggered on the next display refresh
-        AChoreographer_postFrameCallback64(AChoreographer_getInstance(), reinterpret_cast<AChoreographer_frameCallback64>(&ChoreographerCallback), engine);
-    }
-
-    void PresentationEngine::ChoreographerThread() {
-        if (int result{pthread_setname_np(pthread_self(), "Sky-Choreo")})
+    void PresentationEngine::VsyncThread() {
+        if (int result{pthread_setname_np(pthread_self(), "Sky-VSync")})
             LOGW("Failed to set the thread name: {}", strerror(result));
         AsyncLogger::UpdateTag();
 
         try {
-            choreographerLooper = ALooper_prepare(0);
-            AChoreographer_postFrameCallback64(AChoreographer_getInstance(), reinterpret_cast<AChoreographer_frameCallback64>(&ChoreographerCallback), this);
-            while (ALooper_pollAll(-1, nullptr, nullptr, nullptr) == ALOOPER_POLL_WAKE && !choreographerStop); // Will block and process callbacks till ALooper_wake() is called with choreographerStop set
+            std::unique_lock lock{vsyncMutex};
+            auto deadline{GuestFrameClock::Clock::now() + GuestFrameClock::VsyncPeriod};
+            while (!vsyncCondition.wait_until(lock, deadline, [this] { return vsyncStop; })) {
+                lock.unlock();
+                vsyncEvent->Signal();
+                lock.lock();
+                deadline = GuestFrameClock::NextVsync(deadline, GuestFrameClock::Clock::now());
+            }
         } catch (const signal::SignalException &e) {
             LOGE("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
             if (state.process)
@@ -155,6 +140,13 @@ namespace skyline::gpu {
             return (time.tv_sec * constant::NsInSecond) + time.tv_nsec;
         }};
 
+        // Pace actual submissions as well as guest VSync. Native-window timestamps
+        // alone do not throttle buffer release consistently across Vulkan drivers.
+        // The producer supplies the game's interval (1 = 60 FPS, 2 = 30 FPS).
+        std::this_thread::sleep_until(guestFrameClock.SchedulePresent(
+            GuestFrameClock::Clock::now(), static_cast<u32>(frame.swapInterval),
+            !*state.settings->disableFrameThrottling));
+
         i64 timestamp{frame.timestamp};
         if (timestamp) {
             // If the timestamp is specified, we need to convert it from the util::GetTimeNs base to the CLOCK_MONOTONIC one
@@ -166,17 +158,6 @@ namespace skyline::gpu {
             } else {
                 timestamp = 0;
             }
-        }
-
-        if (frame.swapInterval) {
-            // If we have a swap interval, we have to adjust the timestamp to emulate the swap interval
-            i64 lastFramePresentTime{util::AlignUpNpot(windowLastTimestamp, refreshCycleDuration)};
-            if (lastFramePresentTime > lastChoreographerTime)
-                // If the last frame was presented after the last choreographer callback, calculate the new frame's timestamp relative to it
-                timestamp = std::max(timestamp, lastFramePresentTime + (refreshCycleDuration * frame.swapInterval));
-            else
-                // If there has been a choreographer callback since the last frame, calculate the new frame's timestamp relative to it
-                timestamp = std::max(timestamp, lastChoreographerTime + (2 * refreshCycleDuration * frame.swapInterval));
         }
 
         i64 lastTimestamp{std::exchange(windowLastTimestamp, timestamp)};
@@ -237,8 +218,6 @@ namespace skyline::gpu {
             presentQueue.Process([this](const PresentableFrame &frame) {
                 PresentFrame(frame);
                 frame.presentCallback(); // We're calling the callback here as it's outside of all the locks in PresentFrame
-                skipSignal = true;
-                vsyncEvent->Signal();
             }, [] {});
         } catch (const signal::SignalException &e) {
             LOGE("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));

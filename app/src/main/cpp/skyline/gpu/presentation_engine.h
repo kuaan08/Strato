@@ -4,12 +4,15 @@
 #pragma once
 
 #include <jni.h>
-#include <android/looper.h>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <common/trace.h>
 #include <common/circular_queue.h>
 #include <kernel/types/KEvent.h>
 #include <services/hosbinder/GraphicBufferProducer.h>
 #include "texture/texture.h"
+#include "guest_frame_clock.h"
 
 struct ANativeWindow;
 
@@ -52,15 +55,14 @@ namespace skyline::gpu {
         perfetto::Track presentationTrack; //!< Perfetto track used for presentation events
 
       public:
-        std::atomic<bool> skipSignal; //!< If true, the next signal will be skipped by the choreographer thread
-        std::shared_ptr<kernel::type::KEvent> vsyncEvent; //!< Signalled every time a frame is drawn
+        std::shared_ptr<kernel::type::KEvent> vsyncEvent; //!< Guest display VSync, signalled at 60 Hz independently of host refresh
 
       private:
-        ALooper *choreographerLooper{};
-        i64 lastChoreographerTime{}; //!< The timestamp of the last invocation of Choreographer::doFrame
-        i64 refreshCycleDuration{}; //!< The duration of a single refresh cycle for the display in nanoseconds
-        bool choreographerStop{}; //!< If the Choreographer thread should stop on the next ALooper_wake()
-        std::thread choreographerThread; //!< A thread for signalling the V-Sync event and measure the refresh cycle duration using AChoreographer
+        GuestFrameClock guestFrameClock; //!< Accessed only by the presentation thread
+        std::mutex vsyncMutex;
+        std::condition_variable vsyncCondition;
+        bool vsyncStop{}; //!< Protected by vsyncMutex
+        std::thread vsyncThread; //!< Independent guest display clock
 
         struct PresentableFrame {
             std::shared_ptr<TextureView> textureView{};
@@ -81,14 +83,9 @@ namespace skyline::gpu {
         size_t nextFrameId{1}; //!< The frame ID to use for the next frame
 
         /**
-         * @url https://developer.android.com/ndk/reference/group/choreographer#achoreographer_postframecallback64
+         * @brief Signals guest display VSync every 1/60 second, regardless of host refresh rate
          */
-        static void ChoreographerCallback(int64_t frameTimeNanos, PresentationEngine *engine);
-
-        /**
-         * @brief The entry point for the the Choreographer thread, sets up the AChoreographer callback then runs ALooper on the thread
-         */
-        void ChoreographerThread();
+        void VsyncThread();
 
         /**
          * @brief Submits a single frame to the host API for presentation with the appropriate waits and copies
