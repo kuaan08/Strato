@@ -4,6 +4,7 @@
 #include "video_core/host1x/host1x.h"
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 namespace Tegra::Host1x {
 namespace {
 u32 Align(u32 x, u32 a) { return (x + a - 1) / a * a; }
@@ -103,16 +104,28 @@ void VicProcessor::Execute() {
         const u32 sy0 = slot.config.source_rect_top.Value() >> 16;
         const u32 sx1 = (slot.config.source_rect_right.Value() >> 16) + 1;
         const u32 sy1 = (slot.config.source_rect_bottom.Value() >> 16) + 1;
-        if (sx1 <= sx0 || sy1 <= sy0 || sx1 > u32(frame->GetWidth()) || sy1 > u32(frame->GetHeight()))
-            throw std::runtime_error("Invalid VIC source rectangle");
+        if (sx1 <= sx0 || sy1 <= sy0)
+            throw std::runtime_error("Invalid VIC source rectangle: source=" +
+                std::to_string(sx0) + "," + std::to_string(sy0) + ".." +
+                std::to_string(sx1) + "," + std::to_string(sy1) + " decoded=" +
+                std::to_string(frame->GetWidth()) + "x" + std::to_string(frame->GetHeight()) +
+                " raw=" + std::to_string(slot.config.source_rect_left.Value()) + "," +
+                std::to_string(slot.config.source_rect_top.Value()) + ".." +
+                std::to_string(slot.config.source_rect_right.Value()) + "," +
+                std::to_string(slot.config.source_rect_bottom.Value()));
         const u32 clipLeft = std::max(left, u32(config.output_config.target_rect_left));
         const u32 clipTop = std::max(top, u32(config.output_config.target_rect_top));
         const u32 clipRight = std::min({right, width, u32(config.output_config.target_rect_right) + 1});
         const u32 clipBottom = std::min({bottom, height, u32(config.output_config.target_rect_bottom) + 1});
         for (u32 y = clipTop; y < clipBottom; ++y) {
             const u32 sy = sy0 + u64(y - top) * (sy1 - sy0) / (bottom - top);
+            if (sy >= u32(frame->GetHeight())) continue;
             for (u32 x = clipLeft; x < clipRight; ++x) {
                 const u32 sx = sx0 + u64(x - left) * (sx1 - sx0) / (right - left);
+                // Surface rectangles may include padding beyond the decoded frame.
+                // Preserve the requested transform and clip unavailable source pixels;
+                // shrinking the source rectangle would stretch the visible image.
+                if (sx >= u32(frame->GetWidth())) continue;
                 auto p = Convert(Sample(*frame, sx, sy, slot.config.planar_alpha), slot);
                 pixels[size_t(y)*width+x] = p;
             }

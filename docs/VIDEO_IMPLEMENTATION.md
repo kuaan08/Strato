@@ -39,3 +39,17 @@ copies, deferred syncpoint completion and pin retention/release.
 
 Passing these tests does not establish playback in Donkey Kong. The Android build
 and opening cinematic still require validation on the device.
+
+## Source rectangle clipping
+
+A reported Persona 5 Royal crash ended in `Invalid VIC source rectangle` on
+the Host1x worker. The old check rejected source extents outside decoded pixels,
+even though a guest surface may include padding. The compositor now clips
+available source pixels while retaining the original destination transform and
+configured background outside the decoded image. Inverted rectangles still fail
+with raw coordinates and decoded dimensions in the error.
+
+A nonuniform YUV fixture verifies padding, nonzero crop origins and scaling;
+the previous implementation fails this test. The original H.264/VP8 and GOB
+tests remain. The report did not include rectangle dimensions, so confirmation
+that this addresses Persona's specific request requires another device test.

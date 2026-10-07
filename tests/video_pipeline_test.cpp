@@ -2,6 +2,8 @@
 #include "runtime.h"
 #include "video_core/host1x/codec_types.h"
 #include "video_core/host1x/vic_types.h"
+#include "video_core/host1x/host1x.h"
+#include "video_core/host1x/vic_processor.h"
 #include <cassert>
 #include <cstring>
 #include <fstream>
@@ -69,6 +71,55 @@ int main(int argc, char** argv) {
         }
         assert(memory[0x1ffff]==0xcd && memory[0x40000]==0xcd);
     }
+    // A surface/crop can extend beyond decoded pixels. Clip the visible region
+    // without stretching it or reading the padding as if it were frame data.
+    {
+        Host1x host(access);
+        host.frame_queue.Open(3);
+        VicProcessor vic(host);
+        ConfigStruct config{};
+        auto& o=config.output_surface_config;
+        o.out_surface_width.Assign(7);o.out_surface_height.Assign(3);
+        o.out_luma_width.Assign(7);o.out_luma_height.Assign(3);
+        o.out_pixel_format.Assign(VideoPixelFormat::A8B8G8R8);o.out_block_kind.Assign(BlkKind::Pitch);
+        config.output_config.background_r.Assign(12*4);
+        config.output_config.background_g.Assign(13*4);
+        config.output_config.background_b.Assign(14*4);
+        config.output_config.background_a.Assign(1023);
+        config.output_config.target_rect_right.Assign(7);config.output_config.target_rect_bottom.Assign(3);
+        auto& slot=config.slot_structs[0];slot.config.slot_enable.Assign(1);slot.config.planar_alpha.Assign(1023);
+        slot.config.source_rect_right.Assign(7<<16);slot.config.source_rect_bottom.Assign(3<<16);
+        slot.config.dest_rect_right.Assign(7);slot.config.dest_rect_bottom.Assign(3);
+        vic.ProcessMethod(0x100,0x100000>>8);vic.ProcessMethod(0x1c2,0x10000>>8);vic.ProcessMethod(0x1c8,0x20000>>8);
+        auto queueFrame=[&]{
+            auto frame=std::make_shared<FFmpeg::Frame>();auto* f=frame->GetFrame();
+            f->format=AV_PIX_FMT_YUV420P;f->width=4;f->height=2;
+            assert(av_frame_get_buffer(f,32)==0);
+            for(int y=0;y<2;++y)for(int x=0;x<4;++x)f->data[0][y*f->linesize[0]+x]=30+y*10+x;
+            for(int x=0;x<2;++x){f->data[1][x]=90;f->data[2][x]=160;}
+            host.frame_queue.PushPresentOrder(3,0x100000,std::move(frame));
+        };
+        access.WriteBlock(0x10000,&config,sizeof(config));queueFrame();vic.ProcessMethod(0xc0,1);
+        for(unsigned y=0;y<4;++y)for(unsigned x=0;x<8;++x){
+            const auto* p=memory.data()+0x20000+y*32+x*4;
+            if(x<4&&y<2){assert(p[0]==30+y*10+x&&p[1]==90&&p[2]==160);}
+            else {assert(p[0]==12&&p[1]==13&&p[2]==14);}
+            assert(p[3]==255);
+        }
+        // Nonzero crop origin + scaling: original mapping remains intact after clipping.
+        slot.config.source_rect_left.Assign(1<<16);slot.config.source_rect_right.Assign(4<<16);
+        slot.config.source_rect_top.Assign(0);slot.config.source_rect_bottom.Assign(1<<16);
+        access.WriteBlock(0x10000,&config,sizeof(config));queueFrame();vic.ProcessMethod(0xc0,1);
+        for(unsigned y=0;y<4;++y)for(unsigned x=0;x<8;++x){
+            const unsigned sx=1+x/2,sy=y/2;const auto* p=memory.data()+0x20000+y*32+x*4;
+            if(sx<4)assert(p[0]==30+sy*10+sx&&p[1]==90&&p[2]==160);
+            else assert(p[0]==12&&p[1]==13&&p[2]==14);
+        }
+        slot.config.source_rect_left.Assign(5<<16); // Truly inverted rectangles still fail.
+        access.WriteBlock(0x10000,&config,sizeof(config));queueFrame();bool rejected=false;
+        try{vic.ProcessMethod(0xc0,1);}catch(const std::runtime_error& e){rejected=std::string(e.what()).find("decoded=4x2")!=std::string::npos;}
+        assert(rejected);
+    }
     bool failed=false;try{access.ReadBlock(UINT32_MAX,nullptr,2);}catch(const std::runtime_error&){failed=true;}assert(failed);
-    std::cout<<"PASS: H264 and VP8 reconstruction -> FFmpeg -> VIC colour conversion -> pitch/block-linear output (GOB heights 1..32); bounds\n";
+    std::cout<<"PASS: H264 and VP8 reconstruction -> FFmpeg -> VIC colour conversion -> pitch/block-linear output (GOB heights 1..32); crop clipping/scaling; bounds\n";
 }
