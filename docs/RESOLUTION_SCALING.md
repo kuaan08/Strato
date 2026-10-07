@@ -36,7 +36,8 @@ scaling for the session and are logged; unrelated errors and device loss still p
 - `tests/test_resolution_vulkan.py`: actual rasterization at seven scales and even/odd
   dimensions with the shared renderer blit and dynamic-state code. Verifies color,
   depth, stencil, native CPU readback, negative-height viewports and restoring cached
-  native state, with Khronos validation enabled.
+  native state in a subsequent native draw, with Khronos validation and synchronization
+  validation enabled.
 - Android workflow compiles the settings resources, Kotlin and native code.
 
 The Vulkan test is host validation, not validation of PanVK or any specific game.

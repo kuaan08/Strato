@@ -30,10 +30,13 @@ static std::vector<uint32_t> ReadShader(const char *path) {
 int main(int argc, char **argv) {
     assert(argc == 3);
     vk::raii::Context context;
-    const char *layer{"VK_LAYER_KHRONOS_validation"}, *extension{VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+    const char *layer{"VK_LAYER_KHRONOS_validation"};
+    const std::array<const char *, 2> extensions{VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME};
+    const vk::ValidationFeatureEnableEXT syncFeature{vk::ValidationFeatureEnableEXT::eSynchronizationValidation};
+    const vk::ValidationFeaturesEXT validation{.enabledValidationFeatureCount = 1, .pEnabledValidationFeatures = &syncFeature};
     const vk::ApplicationInfo app{.pApplicationName = "Strato resolution integration test", .apiVersion = VK_API_VERSION_1_1};
-    vk::raii::Instance instance(context, vk::InstanceCreateInfo{.pApplicationInfo = &app,
-        .enabledLayerCount = 1, .ppEnabledLayerNames = &layer, .enabledExtensionCount = 1, .ppEnabledExtensionNames = &extension});
+    vk::raii::Instance instance(context, vk::InstanceCreateInfo{.pNext = &validation, .pApplicationInfo = &app,
+        .enabledLayerCount = 1, .ppEnabledLayerNames = &layer, .enabledExtensionCount = 2, .ppEnabledExtensionNames = extensions.data()});
     vk::raii::DebugUtilsMessengerEXT debug(instance, vk::DebugUtilsMessengerCreateInfoEXT{
         .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
         .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral,
@@ -128,7 +131,9 @@ int main(int argc, char **argv) {
             vk::raii::Framebuffer framebuffer(device, vk::FramebufferCreateInfo{.renderPass = *renderPass,
                 .attachmentCount = 2, .pAttachments = views.data(), .width = e.width, .height = e.height, .layers = 1});
             const size_t pixels{size_t(nativeExtent.width) * nativeExtent.height};
-            vk::raii::Buffer buffer(device, vk::BufferCreateInfo{.size = pixels * 9, .usage = vk::BufferUsageFlagBits::eTransferDst});
+            const size_t secondBlock{(pixels * 9 + 3) & ~size_t{3}};
+            const size_t bufferSize{secondBlock + pixels * 9};
+            vk::raii::Buffer buffer(device, vk::BufferCreateInfo{.size = bufferSize, .usage = vk::BufferUsageFlagBits::eTransferDst});
             const auto requirements{buffer.getMemoryRequirements()};
             vk::raii::DeviceMemory memory(device, vk::MemoryAllocateInfo{.allocationSize = requirements.size,
                 .memoryTypeIndex = memoryType(requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)});
@@ -153,6 +158,8 @@ int main(int argc, char **argv) {
             RenderResolutionState state;
             state.viewports[0] = vk::Viewport{0, float(nativeExtent.height), float(nativeExtent.width), -float(nativeExtent.height), 0, 1};
             state.scissors[0] = vk::Rect2D{{8, 8}, {nativeExtent.width - 16, nativeExtent.height - 16}};
+            command.setViewport(0, *state.viewports[0]);
+            command.setScissor(0, *state.scissors[0]);
             state.Begin(command, float(e.width) / nativeExtent.width, float(e.height) / nativeExtent.height, scaledExtent);
             assert(state.Transform(*state.viewports[0]).height < 0);
             assert(state.Transform(*state.viewports[0]).minDepth == 0);
@@ -179,21 +186,51 @@ int main(int argc, char **argv) {
             auto stencilCopy{colorCopy}; stencilCopy.bufferOffset = pixels * 8; stencilCopy.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eStencil;
             command.copyImageToBuffer(*originalColor.image, vk::ImageLayout::eGeneral, *buffer, colorCopy);
             command.copyImageToBuffer(*originalDepth.image, vk::ImageLayout::eGeneral, *buffer, std::array{depthCopy, stencilCopy});
+            // Draw again into the native images using restored cached dynamic state.
+            // This catches stale scaled viewport/scissor state in an actual GPU draw.
+            resolution::Barrier(command, *originalColor.image, vk::ImageAspectFlagBits::eColor);
+            resolution::Barrier(command, *originalDepth.image, depthAspect);
+            command.clearColorImage(*originalColor.image, vk::ImageLayout::eGeneral,
+                vk::ClearColorValue{std::array<float, 4>{0, 0, 1, 1}}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+            command.clearDepthStencilImage(*originalDepth.image, vk::ImageLayout::eGeneral, vk::ClearDepthStencilValue{1, 0},
+                vk::ImageSubresourceRange{depthAspect, 0, 1, 0, 1});
+            resolution::Barrier(command, *originalColor.image, vk::ImageAspectFlagBits::eColor);
+            resolution::Barrier(command, *originalDepth.image, depthAspect);
+            const std::array<vk::ImageView, 2> nativeViews{*originalColor.view, *originalDepth.view};
+            vk::raii::Framebuffer nativeFramebuffer(device, vk::FramebufferCreateInfo{.renderPass = *renderPass,
+                .attachmentCount = 2, .pAttachments = nativeViews.data(), .width = nativeExtent.width, .height = nativeExtent.height, .layers = 1});
+            command.beginRenderPass(vk::RenderPassBeginInfo{.renderPass = *renderPass, .framebuffer = *nativeFramebuffer,
+                .renderArea = {{0, 0}, nativeExtent}}, vk::SubpassContents::eInline);
+            command.draw(3, 1, 0, 0);
+            command.endRenderPass();
+            resolution::Barrier(command, *originalColor.image, vk::ImageAspectFlagBits::eColor);
+            resolution::Barrier(command, *originalDepth.image, depthAspect);
+            auto nativeColorCopy{colorCopy}; nativeColorCopy.bufferOffset = secondBlock;
+            depthCopy.bufferOffset = secondBlock + pixels * 4;
+            stencilCopy.bufferOffset = secondBlock + pixels * 8;
+            command.copyImageToBuffer(*originalColor.image, vk::ImageLayout::eGeneral, *buffer, nativeColorCopy);
+            command.copyImageToBuffer(*originalDepth.image, vk::ImageLayout::eGeneral, *buffer, std::array{depthCopy, stencilCopy});
+            command.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost, {}, {},
+                vk::BufferMemoryBarrier{.srcAccessMask = vk::AccessFlagBits::eTransferWrite, .dstAccessMask = vk::AccessFlagBits::eHostRead,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .buffer = *buffer, .offset = 0, .size = VK_WHOLE_SIZE}, {});
             command.end();
             vk::raii::Fence fence(device, vk::FenceCreateInfo{});
             const vk::CommandBuffer raw{*command};
             queue.submit(vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &raw}, *fence);
             assert(device.waitForFences(*fence, true, UINT64_MAX) == vk::Result::eSuccess);
-            const auto data{static_cast<const uint8_t *>(memory.mapMemory(0, pixels * 9))};
-            auto verify{[&](unsigned x, unsigned y, bool red) {
+            const auto data{static_cast<const uint8_t *>(memory.mapMemory(0, bufferSize))};
+            auto verify{[&](size_t block, unsigned x, unsigned y, bool red) {
                 const size_t p{size_t(y) * nativeExtent.width + x};
-                assert(data[p * 4] == (red ? 255 : 0));
-                assert(data[p * 4 + 2] == (red ? 0 : 255));
-                float depth; std::memcpy(&depth, data + pixels * 4 + p * 4, 4);
+                assert(data[block + p * 4] == (red ? 255 : 0));
+                assert(data[block + p * 4 + 2] == (red ? 0 : 255));
+                float depth; std::memcpy(&depth, data + block + pixels * 4 + p * 4, 4);
                 assert(depth == (red ? 0.25f : 1.0f));
-                assert(data[pixels * 8 + p] == (red ? 7 : 0));
+                assert(data[block + pixels * 8 + p] == (red ? 7 : 0));
             }};
-            verify(20, 40, true); verify(110, 20, false); verify(3, 3, false);
+            for (size_t block : {size_t{0}, secondBlock}) {
+                verify(block, 20, 40, true); verify(block, 110, 20, false); verify(block, 3, 3, false);
+            }
             memory.unmapMemory();
             std::cout << "PASS: " << scale.Factor() << "x " << nativeExtent.width << 'x' << nativeExtent.height
                 << " -> " << e.width << 'x' << e.height << "; color/depth/stencil/readback/native restore\n";

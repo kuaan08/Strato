@@ -36,7 +36,8 @@ namespace skyline::gpu {
         }
 
         void Begin(vk::raii::CommandBuffer &commandBuffer, float scaleX, float scaleY, vk::Extent2D extent) {
-            const bool changed{x != scaleX || y != scaleY || bounds != extent};
+            const bool changed{x != scaleX || y != scaleY ||
+                ((scaleX != 1.0f || scaleY != 1.0f) && bounds != extent)};
             x = scaleX;
             y = scaleY;
             bounds = extent;
