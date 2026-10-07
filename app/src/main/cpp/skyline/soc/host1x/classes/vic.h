@@ -4,6 +4,7 @@
 #pragma once
 
 #include <common.h>
+#include "../video/runtime.h"
 
 namespace skyline::soc::host1x {
     /**
@@ -12,10 +13,13 @@ namespace skyline::soc::host1x {
     class VicClass {
       private:
         std::function<void()> opDoneCallback;
+        strato::video::Runtime &video;
+        unsigned channel;
 
       public:
-        VicClass(std::function<void()> opDoneCallback);
+        VicClass(std::function<void()> opDoneCallback, strato::video::Runtime &video, unsigned channel);
 
         void CallMethod(u32 method, u32 argument);
     };
 }
+

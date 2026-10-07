@@ -87,7 +87,7 @@ namespace skyline::service::nvdrv::device::nvhost {
         }
 
         // One temporary pin per distinct allocation. MapBuffer pins remain owned by the guest.
-        // If asynchronous channel execution is enabled, move this ownership to the queued job.
+        // Transfer temporary pin ownership to the asynchronous channel job.
         struct SubmitPins {
             core::NvMap &nvMap;
             std::vector<Handle::Id> ids;
@@ -95,14 +95,16 @@ namespace skyline::service::nvdrv::device::nvhost {
                 for (auto id : ids)
                     nvMap.UnpinHandle(id);
             }
-        } pins{core.nvMap, {}};
-        pins.ids.reserve(handles.size());
+            explicit SubmitPins(core::NvMap &map) : nvMap(map) {}
+        };
+        auto pins{std::make_shared<SubmitPins>(core.nvMap)};
+        pins->ids.reserve(handles.size());
         std::unordered_map<Handle::Id, u32> addresses;
         for (const auto &[id, handle] : handles) {
             u32 address{core.nvMap.PinHandle(id)};
             if (!address)
                 return PosixResult::TryAgain;
-            pins.ids.push_back(id);
+            pins->ids.push_back(id);
             addresses.emplace(id, address);
         }
         for (auto &patch : patches) {
@@ -117,23 +119,8 @@ namespace skyline::service::nvdrv::device::nvhost {
         if (!patches.empty())
             LOGD("Applied {} Host1x relocations for channel {}", patches.size(), static_cast<u32>(channelType));
 
-        if (!cmdBufs.empty() && !executionWarningShown) {
-            LOGW("Host1x channel {}: engine command execution is still unimplemented; address relocations do not provide NVDEC/VIC video output", static_cast<u32>(channelType));
-            executionWarningShown = true;
-        }
-
-        for (size_t i{}; i < syncpointIncrs.size(); i++) {
-            const auto &incr{syncpointIncrs[i]};
-
-            u32 max{core.syncpointManager.IncrementSyncpointMaxExt(incr.syncpointId, incr.numIncrs)};
-
-            // Increment syncpoints on the CPU to avoid needing to pass through the emulated nvdec code which currently does nothing
-            for (size_t j{}; j < incr.numIncrs; j++)
-                state.soc->host1x.syncpoints[incr.syncpointId].Increment();
-
-            if (i < fenceThresholds.size())
-                fenceThresholds[i] = max;
-        }
+        std::vector<std::vector<u32>> gathers;
+        gathers.reserve(cmdBufs.size());
 
         for (const auto &cmdBuf : cmdBufs) {
             const auto &handleDesc{handles.at(cmdBuf.mem)};
@@ -166,14 +153,23 @@ namespace skyline::service::nvdrv::device::nvhost {
                 }
             }
 #endif
-            // Skip submitting the cmdbufs as no functionality is implemented
-            // state.soc->host1x.channels[static_cast<size_t>(channelType)].Push(gather);
+            gathers.emplace_back(gather.begin(), gather.end());
         }
 
 #ifdef STRATO_VIDEO_TRACE
         ++videoTraceSubmits;
 #endif
 
+        for (size_t i{}; i < syncpointIncrs.size(); i++) {
+            const auto &incr{syncpointIncrs[i]};
+
+            u32 max{core.syncpointManager.IncrementSyncpointMaxExt(incr.syncpointId, incr.numIncrs)};
+
+            if (i < fenceThresholds.size())
+                fenceThresholds[i] = max;
+        }
+
+        state.soc->host1x.channels.at(static_cast<size_t>(channelType)).Push(std::move(gathers), std::move(pins));
         return PosixResult::Success;
     }
 
@@ -253,3 +249,4 @@ namespace skyline::service::nvdrv::device::nvhost {
 #include <services/nvdrv/devices/deserialisation/macro_undef.inc>
 // @fmt:on
 }
+

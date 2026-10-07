@@ -5,6 +5,7 @@
 
 #include "host1x/syncpoint.h"
 #include "host1x/command_fifo.h"
+#include "host1x/video/runtime.h"
 
 namespace skyline::soc::host1x {
     constexpr static size_t ChannelCount{14}; //!< The number of channels within host1x
@@ -15,9 +16,11 @@ namespace skyline::soc::host1x {
      */
     class Host1x {
       public:
+        strato::video::Runtime video;
         SyncpointSet syncpoints;
         std::array<ChannelCommandFifo, ChannelCount> channels;
 
-        Host1x(const DeviceState &state) : channels{util::MakeFilledArray<ChannelCommandFifo, ChannelCount>(state, syncpoints)} {}
+        Host1x(const DeviceState &state);
     };
 }
+

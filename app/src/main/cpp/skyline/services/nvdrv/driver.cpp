@@ -2,6 +2,7 @@
 // Copyright © 2020 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include "driver.h"
+#include <soc.h>
 #include "devices/nvmap.h"
 #include "devices/nvhost/ctrl.h"
 #include "devices/nvhost/ctrl_gpu.h"
@@ -11,6 +12,13 @@
 
 namespace skyline::service::nvdrv {
     Driver::Driver(const DeviceState &state) : state(state), core(state) {}
+
+    Driver::~Driver() {
+        // Host1x jobs own NvMap pins. Stop the workers and release all queued jobs
+        // while core.nvMap still exists (services are destroyed before DeviceState).
+        for (auto &channel : state.soc->host1x.channels)
+            channel.Stop();
+    }
 
     NvResult Driver::OpenDevice(std::string_view path, FileDescriptor fd, const SessionContext &ctx) {
         LOGD("Opening NvDrv device ({}): {}", fd, path);
@@ -156,3 +164,4 @@ namespace skyline::service::nvdrv {
         }
     }
 }
+

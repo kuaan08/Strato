@@ -29,6 +29,7 @@ namespace skyline::service::nvdrv {
         Core core; //!< The core global state object of nvdrv that is accessed by devices
 
         Driver(const DeviceState &state);
+        ~Driver();
 
         /**
          * @brief Creates a new device as specified by path
@@ -64,3 +65,4 @@ namespace skyline::service::nvdrv {
         void CloseDevice(FileDescriptor fd);
     };
 }
+

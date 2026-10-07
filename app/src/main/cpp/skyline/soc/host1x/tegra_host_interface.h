@@ -41,8 +41,9 @@ namespace skyline::soc::host1x {
         }
 
       public:
-        TegraHostInterface(SyncpointSet &syncpoints)
-            : deviceClass([&] { SubmitPendingIncrs(); }),
+        template<class... Args>
+        TegraHostInterface(SyncpointSet &syncpoints, Args&&... args)
+            : deviceClass([&] { SubmitPendingIncrs(); }, std::forward<Args>(args)...),
               syncpoints(syncpoints) {}
 
         void CallMethod(u32 method, u32 argument)  {
@@ -58,10 +59,14 @@ namespace skyline::soc::host1x {
                             LOGD("Increment syncpoint: {}", incrSyncpoint.index);
                             syncpoints.at(incrSyncpoint.index).Increment();
                             break;
+                        case IncrementSyncpointMethod::Condition::RdDone:
+                        case IncrementSyncpointMethod::Condition::RegWRSafe:
                         case IncrementSyncpointMethod::Condition::OpDone:
                             LOGD("Queue syncpoint for OpDone: {}", incrSyncpoint.index);
                             AddIncr(incrSyncpoint.index);
-                            SubmitPendingIncrs(); // FIXME: immediately submit the incrs as classes are not yet implemented
+                            // Device methods execute synchronously on this channel's worker.
+                            // At this point every preceding decode/write has completed.
+                            SubmitPendingIncrs();
                             break;
                         default:
                             LOGW("Unimplemented syncpoint condition: {}", static_cast<u8>(incrSyncpoint.condition));
@@ -82,3 +87,4 @@ namespace skyline::soc::host1x {
         }
     };
 }
+

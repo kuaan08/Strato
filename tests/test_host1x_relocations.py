@@ -44,7 +44,13 @@ struct NvMap {
 };
 }
 struct Syncpoint {u32 value=0;void Increment(){++value;}};
-struct Host {std::array<Syncpoint,192> syncpoints;};
+struct QueuedChannel {
+ struct Job {std::shared_ptr<void> pins; std::vector<std::vector<u32>> gathers;};
+ std::vector<Job> jobs;
+ void Push(std::vector<std::vector<u32>> gathers,std::shared_ptr<void> pins){jobs.push_back({std::move(pins),std::move(gathers)});}
+ void Complete(){jobs.clear();}
+};
+struct Host {std::array<Syncpoint,192> syncpoints; std::array<QueuedChannel,14> channels;};
 struct Soc {Host host1x;};
 struct State {std::shared_ptr<Soc> soc=std::make_shared<Soc>();};
 struct Manager {
@@ -80,9 +86,15 @@ int main(){
  assert(submit()==PosixResult::Success);
  assert(cmd->words[3]==0x12345014&&cmd->words[4]==0x123450);
  assert(cmd->words[2]==0xcccccccc&&cmd->words[5]==0xcccccccc);
- assert(fences[0]==1&&channel.state.soc->host1x.syncpoints[54].value==1);
- assert(cmd->pins==0&&target->pins==1&&channel.core.nvMap.calls==2);
- for(int i=0;i<50;++i)assert(submit()==PosixResult::Success);
+ assert(fences[0]==1&&channel.state.soc->host1x.syncpoints[54].value==0);
+ assert(cmd->pins==1&&target->pins==2&&channel.core.nvMap.calls==2);
+ auto& queue=channel.state.soc->host1x.channels[3];
+ assert(queue.jobs.size()==1&&queue.jobs[0].gathers[0][1]==0x12345014);
+ cmd->words[3]=0;
+ assert(queue.jobs[0].gathers[0][1]==0x12345014); // Private snapshot cannot be changed by guest reuse.
+ queue.Complete();
+ assert(cmd->pins==0&&target->pins==1);
+ for(int i=0;i<50;++i){assert(submit()==PosixResult::Success);queue.Complete();}
  assert(cmd->pins==0&&target->pins==1);
  relocs[1].pinMem=99;unchanged();relocs[1].pinMem=8;
  relocs[1].patchMem=8;unchanged();relocs[1].patchMem=4;
@@ -107,6 +119,7 @@ int main(){
  channel.core.nvMap.throwing=false;channel.core.nvMap.failAfter=-1;
  relocs.clear();shifts.clear();assert(submit()==PosixResult::Success);
  cmds.clear();sync.clear();fences.clear();assert(submit()==PosixResult::Success);
+ queue.Complete();assert(cmd->pins==0&&target->pins==1);
 }
 '''.replace("METHOD", method)
 with tempfile.TemporaryDirectory() as directory:
@@ -117,4 +130,4 @@ with tempfile.TemporaryDirectory() as directory:
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
                     str(path / "test.cpp"), "-o", str(path / "test")], check=True)
     subprocess.run([str(path / "test")], check=True)
-print("PASS: Host1x relocation addresses/shifts, gather bounds, failure atomicity, fences and balanced pins")
+print("PASS: Host1x relocation addresses/shifts, gather bounds, failure atomicity, deferred fences, immutable gathers and asynchronous pin ownership")

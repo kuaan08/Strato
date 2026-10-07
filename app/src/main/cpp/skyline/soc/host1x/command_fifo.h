@@ -22,7 +22,13 @@ namespace skyline::soc::host1x {
         const DeviceState &state;
 
         static constexpr size_t GatherQueueSize{0x1000}; //!< Maximum size of the gather queue, this value is arbritary
-        CircularQueue<span<u32>> gatherQueue;
+        struct Job {
+            std::shared_ptr<void> pins; //!< Pins survive until every gather in this job completes
+            std::vector<std::vector<u32>> gathers; //!< Own command words, not mutable guest spans
+        };
+        std::unique_ptr<CircularQueue<Job>> gatherQueue;
+        unsigned videoChannel;
+        u32 selectedClass{static_cast<u32>(ClassId::Host1x)};
         std::thread thread; //!< The thread that manages processing of pushbuffers within gathers
         std::mutex threadStartMutex; //!< Protects the thread from being started multiple times
 
@@ -46,7 +52,7 @@ namespace skyline::soc::host1x {
         void Run();
 
       public:
-        ChannelCommandFifo(const DeviceState &state, SyncpointSet &syncpoints);
+        ChannelCommandFifo(const DeviceState &state, SyncpointSet &syncpoints, strato::video::Runtime &video);
 
         ~ChannelCommandFifo();
 
@@ -55,9 +61,12 @@ namespace skyline::soc::host1x {
          */
         void Start();
 
+        // Stop and release queued mappings before nvdrv destroys NvMap.
+        void Stop();
+
         /**
          * @brief Pushes a single gather into the FIFO to be processed asynchronously
          */
-        void Push(span<u32> gather);
+        void Push(std::vector<std::vector<u32>> gathers, std::shared_ptr<void> pins);
     };
 }

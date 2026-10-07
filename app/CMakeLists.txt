@@ -202,6 +202,7 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/gpu/interconnect/common/file_pipeline_state_accessor.cpp
         ${source_DIR}/skyline/gpu/shaders/helper_shaders.cpp
         ${source_DIR}/skyline/soc/smmu.cpp
+        ${source_DIR}/skyline/soc/host1x.cpp
         ${source_DIR}/skyline/soc/host1x/syncpoint.cpp
         ${source_DIR}/skyline/soc/host1x/command_fifo.cpp
         ${source_DIR}/skyline/soc/host1x/classes/host1x.cpp
@@ -397,7 +398,8 @@ target_include_directories(skyline PRIVATE ${source_DIR}/skyline)
 # target_precompile_headers(skyline PRIVATE ${source_DIR}/skyline/common.h) # PCH will currently break Intellisense
 target_compile_options(skyline PRIVATE -Wall -Wno-unknown-attributes -Wno-c++20-extensions -Wno-c++17-extensions -Wno-c99-designator -Wno-reorder -Wno-missing-braces -Wno-unused-variable -Wno-unused-private-field -Wno-dangling-else -Wconversion -fsigned-bitfields)
 
-target_link_libraries(skyline PRIVATE shader_recompiler audio_core)
+add_subdirectory(${source_DIR}/skyline/soc/host1x/video)
+target_link_libraries(skyline PRIVATE shader_recompiler audio_core strato_video)
 target_link_libraries_system(skyline android perfetto fmt lz4_static tzcode vkma mbedcrypto opus Boost::intrusive Boost::container Boost::preprocessor Boost::regex range-v3 adrenotools tsl::robin_map)
 
 # Expensive command/register tracing is opt-in; normal builds do no diagnostic decoding.
@@ -405,3 +407,4 @@ option(STRATO_VIDEO_TRACE "Trace bounded Host1x video command submissions" OFF)
 if(STRATO_VIDEO_TRACE)
     target_compile_definitions(skyline PRIVATE STRATO_VIDEO_TRACE)
 endif()
+

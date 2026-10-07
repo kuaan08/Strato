@@ -1,38 +1,41 @@
-# NVDEC/VIC integration
+# NVDEC/VIC video playback
 
-Status: command diagnostics only. Video decoding and VIC output are not implemented by this branch yet.
+Status: experimental implementation; Android and real-game playback validation pending.
 
-Reference: yuzu commit `767b024755c70aeacdf555907b18c11b27127825`, preserved in
-`eden-emulator/mirror`. The relevant files are `src/video_core/host1x/nvdec.cpp`,
-`codecs/{h264,vp8,vp9}.cpp`, `nvdec_common.h`, `vic.cpp`, and `externals/ffmpeg/CMakeLists.txt`.
-No reference decoder code is linked into this diagnostic build.
+The previous branch applied Host1x relocations and advanced syncpoints without
+executing NVDEC/VIC commands. Audio could play but no video frames were generated.
 
-The current Strato submission path applies address relocations but does not execute engine
-commands. It increments syncpoints on the CPU. The existing NVDEC and VIC classes are stubs.
-Enabling the command FIFO alone cannot produce decoded pictures.
+This branch executes owned command gathers on Host1x workers, retains NvMap pins
+until completion and stops workers before NvMap destruction. Syncpoint conditions
+are completed on the worker, after preceding synchronous engine work.
 
-## Diagnostic capture
+NVDEC reconstructs H.264/VP8/VP9 packets using Eden/Yuzu code, decodes with pinned
+FFmpeg n6.1.2 software decoders, and passes frames through a synchronized queue.
+VIC reads guest configuration, applies its color matrix and writes RGBA/BGRA/XRGB
+or NV12 surfaces to SMMU memory in pitch or Tegra block-linear layout.
 
-`VideoTrace` logs the first 32 submissions and at most 2048 method writes per channel.
-Each inspected gather is capped at 8192 words. Register writes distinguish NVDEC from VIC,
-including raw THI method addresses, to identify the codec and output configuration requested
-by Donkey Kong Country Returns HD. Unknown or truncated opcodes stop inspection and are logged.
-These diagnostics do not change command execution or fence behavior. They do not dump video payloads.
+Reference: Eden 746a6d9160c817a173d97f645c7b8abf75020f32. Original attribution
+is preserved; license texts and notices are bundled under assets/licenses/video.
 
-## Integration gates
+## Scope and remaining limitations
 
-1. Capture the actual NVDEC codec selection, THI method address units, VIC configuration, and
-   syncpoint ordering. Preserve the captured metadata as a device-side diagnostic artifact.
-2. Adapt Yuzu's bitstream reconstruction to checked Strato SMMU reads. Preserve each imported
-   file's attribution and license and include applicable notices.
-3. Integrate a pinned FFmpeg build with software decoding, bounded packet/frame allocations,
-   explicit errors, decoder reset, and a frame queue with defined ownership.
-4. Implement the requested VIC pixel formats, pitch/block-linear layout, and checked writes.
-   Validate generated pixels against independently decoded reference fixtures.
-5. Execute owned command buffers, retain pinned mappings until completion, and signal
-   syncpoints after actual processing. Remove the current completion shortcut as part of
-   this integration, not before the execution and lifetime requirements are satisfied.
-6. Test decoder errors, malformed addresses, multiple frames, resets, and teardown. Then
-   validate the Android build and the opening sequence on the device.
+Progressive 8-bit YUV420/NV12 input and a single opaque VIC slot are implemented.
+Advanced VIC filtering, interlacing, transpose and alpha composition are not
+implemented. Explicit errors identify unsupported output paths. VP9 packet
+reconstruction is ported but has not yet passed an end-to-end sample test.
+CPU decoding may be slower than hardware decoding; no PanVK, renderer, UI or
+frame-pacing behavior is changed by this work.
 
-Passing the command parser and relocation tests does not establish video playback support.
+## Validation
+
+`tests/test_video_pipeline.py` compiles the actual portable video module with
+ASan/UBSan, reconstructs synthetic H.264 and VP8 bitstreams, decodes them and
+checks guest pixels against known red-color values. Pitch and GOB heights
+1 through 32 and out-of-range address rejection are covered.
+
+`tests/test_host1x_relocations.py` exercises the production submission method:
+relocations, malformed request rejection, failure atomicity, immutable command
+copies, deferred syncpoint completion and pin retention/release.
+
+Passing these tests does not establish playback in Donkey Kong. The Android build
+and opening cinematic still require validation on the device.
