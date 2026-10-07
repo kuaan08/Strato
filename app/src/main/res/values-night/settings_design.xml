@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="settings_blue">#91BCFF</color>
+    <color name="settings_background">#0C1423</color>
+    <color name="settings_container_blue">#152E52</color>
+    <color name="settings_on_container">#E0ECFF</color>
+    <color name="settings_secondary_text">#B3C4DE</color>
+    <color name="settings_outline">#355782</color>
+</resources>

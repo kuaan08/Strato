@@ -22,6 +22,7 @@ android {
         minSdk 29
         targetSdk 33
 
+        buildConfigField 'String', 'RELEASE_VERSION', '"0.0.3 RC2"'
         versionCode getGitVersionCode()
         versionName getGitVersionName()
 
@@ -184,7 +185,7 @@ kapt {
  * e.g. `1.0.0-pr123-ab00cd11`
  */
 def getGitVersionName() {
-    def versionName = '0.0.0'
+    def versionName = '0.0.3 RC2'
 
     try {
         // Check if HEAD is a tag
@@ -193,7 +194,7 @@ def getGitVersionName() {
 
         // Use the tag name as the version name
         def tag = 'git describe --abbrev=0'.execute([], project.rootDir).text.trim()
-        if (!tag.isEmpty())
+        if (isTag && !tag.isEmpty())
             versionName = tag
 
         // If HEAD is not a tag, append the branch name and the short commit hash
@@ -257,3 +258,4 @@ def getGitBranch() {
 
     return branch
 }
+

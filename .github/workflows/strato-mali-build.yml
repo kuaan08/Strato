@@ -101,6 +101,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-strato-mali-gradle-
 
+      - name: Validate settings resources and Kotlin
+        run: ./gradlew --no-daemon --stacktrace compileMainlineReleaseKotlin
+
       - name: Build Strato Mali
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache
@@ -116,3 +119,4 @@ jobs:
           name: Strato-Mali-APK
           path: app/build/outputs/apk/mainline/release/*.apk
           if-no-files-found: error
+

@@ -125,6 +125,7 @@ class GpuDriverActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState : Bundle?) {
+        theme.applyStyle(R.style.SettingsBlueTheme, true)
         super.onCreate(savedInstanceState)
 
         setContentView(binding.root)
@@ -201,3 +202,4 @@ class GpuDriverActivity : AppCompatActivity() {
         GpuDriverInstallResult.AlreadyInstalled -> getString(R.string.gpu_driver_install_already_installed)
     }
 }
+

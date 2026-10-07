@@ -11,6 +11,7 @@ import android.view.View
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.forEach
 import androidx.preference.SwitchPreferenceCompat
 import androidx.preference.TwoStatePreference
 import androidx.window.layout.FoldingFeature
@@ -20,7 +21,7 @@ import org.stratoemu.strato.MainActivity
 import org.stratoemu.strato.R
 import org.stratoemu.strato.utils.GpuDriverHelper
 import org.stratoemu.strato.utils.WindowInsetsHelper
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,6 +30,44 @@ import kotlinx.coroutines.withContext
  * This fragment is used to display the global preferences
  */
 class GlobalSettingsFragment : PreferenceFragmentCompat() {
+    private var section = "graphics"
+    private var searchQuery = ""
+    private val availability = mutableMapOf<String, Boolean>()
+    private val graphicsKeys = setOf("perf_stats", "max_refresh_rate", "orientation", "aspect_ratio",
+        "respect_display_cutout", "enable_foldable_layout", "show_pause_button", "disable_shader_cache")
+    private val folderKeys = setOf("search_location", "filter_invalid_files")
+    private val gpuKeys = setOf("force_triple_buffering", "disable_frame_throttling", "executor_slot_count_scale",
+        "executor_flush_threshold", "use_direct_memory_import", "force_max_gpu_clocks", "free_guest_texture_memory",
+        "enable_fast_gpu_readback_hack", "enable_fast_readback_writes", "disable_subgroup_shuffle", "validation_layer")
+
+    fun showSection(value: String, query: String = searchQuery) {
+        section = value
+        searchQuery = query
+        if (preferenceScreen == null) return
+        val queries = query.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        preferenceScreen.forEach { group ->
+            val category = group as? PreferenceCategory ?: return@forEach
+            val categoryMatches = queries.any { category.title?.contains(it, true) == true }
+            var visible = false
+            category.forEach { preference ->
+                val key = preference.key ?: ""
+                val owner = when {
+                    key == "gpu_driver" -> "drivers"
+                    key in folderKeys -> "folders"
+                    key in graphicsKeys -> "graphics"
+                    key in gpuKeys -> "gpu"
+                    else -> "general"
+                }
+                val matches = queries.isEmpty() || categoryMatches || queries.any {
+                    preference.title?.contains(it, true) == true || preference.summary?.contains(it, true) == true
+                }
+                preference.isVisible = owner == section && availability[key] != false && matches
+                visible = visible || preference.isVisible
+            }
+            category.isVisible = visible
+        }
+    }
+
     override fun onViewCreated(view : View, savedInstanceState : Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val recyclerView = view.findViewById<View>(androidx.preference.R.id.recycler_view)
@@ -51,10 +90,11 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
             true
         }
 
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch {
             WindowInfoTracker.getOrCreate(requireContext()).windowLayoutInfo(requireActivity()).collect { newLayoutInfo ->
                 withContext(Dispatchers.Main) {
-                    findPreference<SwitchPreferenceCompat>("enable_foldable_layout")?.isVisible = newLayoutInfo.displayFeatures.find { it is FoldingFeature } != null
+                    availability["enable_foldable_layout"] = newLayoutInfo.displayFeatures.any { it is FoldingFeature }
+                    showSection(section)
                 }
             }
         }
@@ -86,5 +126,19 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
             directMemoryImportPref.isSelectable = false
             directMemoryImportPref.isChecked = false
         }
+        preferenceScreen.forEach { group ->
+            (group as? PreferenceCategory)?.forEach { preference ->
+                preference.key?.let { availability[it] = preference.isVisible }
+            }
+        }
+        section = savedInstanceState?.getString("settings_section") ?: "graphics"
+        searchQuery = savedInstanceState?.getString("settings_query") ?: ""
+        showSection(section, searchQuery)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("settings_section", section)
+        outState.putString("settings_query", searchQuery)
     }
 }

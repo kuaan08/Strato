@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.view.KeyEvent
 import android.view.Menu
+import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -23,6 +24,7 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.forEach
 import com.google.android.material.appbar.AppBarLayout
+import com.google.android.material.tabs.TabLayout
 import com.google.android.material.internal.ToolbarUtils
 import org.stratoemu.strato.BuildConfig
 import org.stratoemu.strato.R
@@ -37,6 +39,10 @@ import org.stratoemu.strato.utils.WindowInsetsHelper
 private const val PREFERENCE_DIALOG_FRAGMENT_TAG = "androidx.preference.PreferenceFragment.DIALOG"
 
 class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPreferenceDisplayDialogCallback {
+    private var searchView: SearchView? = null
+    private val sectionDescriptions = listOf(R.string.settings_graphics_summary, R.string.settings_gpu_summary,
+        R.string.settings_folders_summary, R.string.settings_drivers_summary, R.string.settings_general_summary)
+
     val binding by lazy { SettingsActivityBinding.inflate(layoutInflater) }
     val hiddenCategoriesFromSearch = if (BuildConfig.BUILD_TYPE == "release") {
         arrayOf("category_debug", "category_credits", "category_licenses")
@@ -49,7 +55,7 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
      * Retrieves extras from the intent if any and instantiates the appropriate fragment
      */
     private val preferenceFragment by lazy {
-        if (intent.hasExtra(AppItemTag))
+        (supportFragmentManager.findFragmentById(R.id.settings) as? PreferenceFragmentCompat) ?: if (intent.hasExtra(AppItemTag))
             GameSettingsFragment().apply { arguments = intent.extras }
         else
             GlobalSettingsFragment()
@@ -59,6 +65,7 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
      * This initializes all of the elements in the activity and displays the settings fragment
      */
     override fun onCreate(savedInstanceState : Bundle?) {
+        theme.applyStyle(R.style.SettingsBlueTheme, true)
         super.onCreate(savedInstanceState)
 
         setContentView(binding.root)
@@ -66,12 +73,36 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         WindowInsetsHelper.applyToActivity(binding.root)
 
         setSupportActionBar(binding.titlebar.toolbar)
+        if (!intent.hasExtra(AppItemTag)) {
+            supportActionBar?.title = getString(R.string.settings_hub_title)
+            binding.versionText.text = getString(R.string.settings_version_label, BuildConfig.RELEASE_VERSION)
+            val sections = listOf("graphics", "gpu", "folders", "drivers", "general")
+            val titles = listOf(R.string.settings_tab_graphics, R.string.settings_tab_gpu,
+                R.string.settings_tab_folders, R.string.settings_tab_drivers, R.string.settings_tab_general)
+            val selected = savedInstanceState?.getInt("settings_tab", 0) ?: 0
+            titles.forEachIndexed { index, title ->
+                binding.settingsTabs.addTab(binding.settingsTabs.newTab().setText(title), index == selected)
+            }
+            binding.settingsTabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+                override fun onTabSelected(tab: TabLayout.Tab) {
+                    (preferenceFragment as? GlobalSettingsFragment)?.showSection(sections[tab.position], "")
+                    binding.sectionDescription.setText(sectionDescriptions[tab.position])
+                    // Searching is scoped to the selected tab.
+                    searchView?.setQuery("", false)
+                }
+                override fun onTabUnselected(tab: TabLayout.Tab) {}
+                override fun onTabReselected(tab: TabLayout.Tab) {}
+            })
+            binding.sectionDescription.setText(sectionDescriptions[selected])
+        } else {
+            binding.settingsHeader.visibility = View.GONE
+        }
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         var layoutDone = false // Tracks if the layout is complete to avoid retrieving invalid attributes
         binding.coordinatorLayout.viewTreeObserver.addOnTouchModeChangeListener { isTouchMode ->
             val layoutUpdate = {
-                val params = binding.settings.layoutParams as CoordinatorLayout.LayoutParams
+                val params = binding.settingsContainer.layoutParams as CoordinatorLayout.LayoutParams
                 if (!isTouchMode) {
                     binding.titlebar.appBarLayout.setExpanded(true)
                     params.height = binding.coordinatorLayout.height - binding.titlebar.toolbar.height
@@ -79,8 +110,8 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
                     params.height = CoordinatorLayout.LayoutParams.MATCH_PARENT
                 }
 
-                binding.settings.layoutParams = params
-                binding.settings.requestLayout()
+                binding.settingsContainer.layoutParams = params
+                binding.settingsContainer.requestLayout()
             }
 
             if (!layoutDone) {
@@ -129,6 +160,7 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         menuInflater.inflate(R.menu.settings_menu, menu)
         val menuItem = menu!!.findItem(R.id.app_bar_search)
         val searchView = menuItem.actionView as SearchView
+        this.searchView = searchView
         searchView.queryHint = getString(R.string.search)
 
         searchView.setOnQueryTextFocusChangeListener { _, focus ->
@@ -145,6 +177,12 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
             }
 
             override fun onQueryTextChange(newText : String) : Boolean {
+                val global = preferenceFragment as? GlobalSettingsFragment
+                if (global != null) {
+                    val sections = listOf("graphics", "gpu", "folders", "drivers", "general")
+                    global.showSection(sections[binding.settingsTabs.selectedTabPosition.coerceAtLeast(0)], newText)
+                    return true
+                }
                 val queries = newText.split(",")
                 if (newText.isNotEmpty()) {
                     preferenceFragment.preferenceScreen.forEach { preferenceCategory ->
@@ -187,6 +225,11 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         }
 
         return super.onKeyUp(keyCode, event)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("settings_tab", binding.settingsTabs.selectedTabPosition.coerceAtLeast(0))
+        super.onSaveInstanceState(outState)
     }
 
     override fun finish() {
@@ -234,3 +277,4 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         }
     }
 }
+
