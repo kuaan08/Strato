@@ -90,14 +90,6 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
             true
         }
 
-        lifecycleScope.launch {
-            WindowInfoTracker.getOrCreate(requireContext()).windowLayoutInfo(requireActivity()).collect { newLayoutInfo ->
-                withContext(Dispatchers.Main) {
-                    availability["enable_foldable_layout"] = newLayoutInfo.displayFeatures.any { it is FoldingFeature }
-                    showSection(section)
-                }
-            }
-        }
 
         // Uncheck `disable_frame_throttling` if `force_triple_buffering` gets disabled
         val disableFrameThrottlingPref = findPreference<TwoStatePreference>("disable_frame_throttling")!!
@@ -134,6 +126,16 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
         section = savedInstanceState?.getString("settings_section") ?: "graphics"
         searchQuery = savedInstanceState?.getString("settings_query") ?: ""
         showSection(section, searchQuery)
+
+        lifecycleScope.launch {
+            WindowInfoTracker.getOrCreate(requireContext()).windowLayoutInfo(requireActivity()).collect { newLayoutInfo ->
+                withContext(Dispatchers.Main) {
+                    availability["enable_foldable_layout"] = newLayoutInfo.displayFeatures.any { it is FoldingFeature }
+                    showSection(section)
+                }
+            }
+        }
+
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
