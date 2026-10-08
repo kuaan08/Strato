@@ -29,3 +29,15 @@ Historical branches checked: resolution-scaling, strato-mali, perf/strato-mali-v
 - Android compile and device game retests tracked separately; no blanket claim of fixed crashes or measured FPS improvements.
 
 References: Linux madvise(2); Vulkan vertex input divisor specification; Switchbrew Error_codes; Atmosphere fs_results.hpp (NotMounted = 6905).
+
+## Follow-up: ten additional logs and failed build
+
+- Preserve commit 7518c59's memory reclamation, 13-bit results and divisor-1 fixes.
+- Build 37810508187 failed because kernel::memory shadowed skyline::memory in memory.cpp and KMemory headers. Rename the helper namespace to memoryReclaim and add a namespace lookup regression to the existing memory test.
+- Remove only the settings version TextView and its Kotlin binding access; keep the Strato Mali card/title.
+- ARM proprietary driver: retain mutable-format image creation. The previous AFBC optimization omitted MUTABLE_FORMAT while guest games requested compatible sRGB/UNORM views. This corrects image creation, not merely log suppression. It can affect AFBC/performance; device game retests remain required. PanVK and Adreno policies are unchanged.
+- Evidence: emulation (1) (6) Odyssey and (1) (7) Donkey Kong Country Returns HD repeatedly request sRGB/UNORM views. (1) (5) Mario 3D World and (1) (4) Link's Awakening also report them.
+- Outstanding: (22) socket initialization/closed handle and 2010-0212; (26) audio GetWorkBufferSize and 2153-1537; (23)/(24) BOTW 1.0.0 unresolved __nnDetailInitLibc0 and reprotection failure; Link's Awakening guest thread crash. These are not established as fixed by this patch.
+- BOTW 1.6.0 (1) (3) and Mario Kart (25) have no explicit fatal ending. Logs naming Fusion report ArmProprietary, not MesaPanvk.
+- Validation on Android: memory reclamation and Result tests pass with ASan/UBSan, ASAN_OPTIONS=detect_leaks=0 because LeakSanitizer cannot run in this remote Android environment. XML parses and removed version binding has no remaining reference. Full build runs in GitHub Actions.
+- Vulkan reference: https://docs.vulkan.org/refpages/latest/refpages/source/VkImageViewCreateInfo.html

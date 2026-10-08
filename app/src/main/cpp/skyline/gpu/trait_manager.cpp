@@ -265,7 +265,10 @@ namespace skyline::gpu {
                     brokenDynamicStateVertexBindings = true;
 
                 brokenSpirvAccessChainOpt = true;
-                vkImageMutableFormatCostly = true; // Disables AFBC in some cases
+                // Guest textures may be viewed as both sRGB and UNORM. ARM does
+                // not support Adreno's relaxed aliasing: keep MUTABLE_FORMAT
+                // even when this prevents AFBC on some image formats.
+                vkImageMutableFormatCostly = false;
                 maxGlobalPriority = vk::QueueGlobalPriorityEXT::eHigh;
                 break;
             }
