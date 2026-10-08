@@ -2,34 +2,15 @@
 // Copyright © 2022 Skyline Team and Contributors (https://github.com/skyline-emu/)
 // Copyright © 2019-2022 Ryujinx Team and Contributors
 
-#include <codecvt>
+#include "software_keyboard_text.h"
 #include <services/am/storage/ObjIStorage.h>
 #include <common/settings.h>
 #include "software_keyboard_applet.h"
 #include <jvm.h>
 
-class Utf8Utf16Converter : public std::codecvt<char16_t, char8_t, std::mbstate_t> {
-  public:
-    ~Utf8Utf16Converter() override = default;
-};
-
 namespace skyline::applet::swkbd {
     static void WriteStringToSpan(span<u8> chars, std::u16string_view text, bool useUtf8Storage) {
-        if (useUtf8Storage) {
-            auto u8chars{chars.cast<char8_t>()};
-            Utf8Utf16Converter::state_type convert_state;
-            const char16_t *from_next;
-            char8_t *to_next;
-            Utf8Utf16Converter().out(convert_state, text.data(), text.end(), from_next, u8chars.data(), u8chars.end().base(), to_next);
-            // Null terminate the string, if it isn't out of bounds
-            if (to_next < reinterpret_cast<const char8_t *>(text.end()))
-                *to_next = u8'\0';
-        } else {
-            std::memcpy(chars.data(), text.data(), std::min(text.size() * sizeof(char16_t), chars.size()));
-            // Null terminate the string, if it isn't out of bounds
-            if (text.size() * sizeof(char16_t) < chars.size())
-                *(reinterpret_cast<char16_t *>(chars.data()) + text.size()) = u'\0';
-        }
+        EncodeKeyboardText(chars.data(), chars.size(), text, useUtf8Storage);
     }
 
     SoftwareKeyboardApplet::ValidationRequest::ValidationRequest(std::u16string_view text, bool useUtf8Storage) : size{sizeof(ValidationRequest)} {
@@ -50,8 +31,11 @@ namespace skyline::applet::swkbd {
     }
 
     void SoftwareKeyboardApplet::SendResult() {
-        if (dialog)
+        if (dialog) {
             state.jvm->CloseKeyboard(dialog);
+            dialog = nullptr;
+        }
+        validationPending = false;
         PushNormalDataAndSignal(std::make_shared<service::am::ObjIStorage<OutputResult>>(state, manager, OutputResult{currentResult, currentText, config.commonConfig.isUseUtf8}));
         onAppletStateChanged->Signal();
     }
@@ -103,7 +87,7 @@ namespace skyline::applet::swkbd {
                       config.commonConfig.isUseTextCheck
         );
 
-        auto maxChars{static_cast<u32>(SwkbdTextBytes / (config.commonConfig.isUseUtf8 ? sizeof(char8_t) : sizeof(char16_t)))};
+        auto maxChars{static_cast<u32>(SwkbdTextBytes / (config.commonConfig.isUseUtf8 ? sizeof(char8_t) : sizeof(char16_t)) - 1)};
         config.commonConfig.textMaxLength = std::min(config.commonConfig.textMaxLength, maxChars);
         if (config.commonConfig.textMaxLength == 0)
             config.commonConfig.textMaxLength = maxChars;
@@ -112,8 +96,18 @@ namespace skyline::applet::swkbd {
         if (config.commonConfig.textMaxLength > MaxOneLineChars)
             config.commonConfig.inputFormMode = InputFormMode::MultiLine;
 
-        if (!normalInputData.empty() && config.commonConfig.initialStringLength > 0)
-            currentText = std::u16string(normalInputData.front()->GetSpan().subspan(config.commonConfig.initialStringOffset).cast<char16_t>().data(), config.commonConfig.initialStringLength);
+        if (!normalInputData.empty() && config.commonConfig.initialStringLength > 0) {
+            auto initialData{normalInputData.front()->GetSpan()};
+            const auto offset{config.commonConfig.initialStringOffset};
+            if (offset <= initialData.size()) {
+                const auto count{std::min<std::size_t>({config.commonConfig.initialStringLength,
+                    config.commonConfig.textMaxLength, (initialData.size() - offset) / sizeof(char16_t)})};
+                currentText.resize(count);
+                std::memcpy(currentText.data(), initialData.data() + offset, count * sizeof(char16_t));
+            } else {
+                LOGW("Swkbd initial text offset is outside storage");
+            }
+        }
 
         dialog = state.jvm->ShowKeyboard(*reinterpret_cast<JvmManager::KeyboardConfig *>(&config), currentText);
         if (!dialog) {
@@ -151,7 +145,7 @@ namespace skyline::applet::swkbd {
                 SendResult();
             } else {
                 if (dialog) {
-                    if (static_cast<CloseResult>(state.jvm->ShowValidationResult(dialog, static_cast<JvmManager::KeyboardTextCheckResult>(validationResult.result), std::u16string(validationResult.chars.data()))) == CloseResult::Enter) {
+                    if (static_cast<CloseResult>(state.jvm->ShowValidationResult(dialog, static_cast<JvmManager::KeyboardTextCheckResult>(validationResult.result), std::u16string(validationResult.chars.begin(), std::find(validationResult.chars.begin(), validationResult.chars.end(), u'\0')))) == CloseResult::Enter) {
                         // Accepted on confirmation dialog
                         validationPending = false;
                         SendResult();
@@ -168,7 +162,7 @@ namespace skyline::applet::swkbd {
                     }
                 } else {
                     std::array<u8, SwkbdTextBytes> chars{};
-                    WriteStringToSpan(chars, std::u16string(validationResult.chars.data()), true);
+                    WriteStringToSpan(chars, std::u16string(validationResult.chars.begin(), std::find(validationResult.chars.begin(), validationResult.chars.end(), u'\0')), true);
                     std::string message{reinterpret_cast<char *>(chars.data())};
                     if (validationResult.result == TextCheckResult::ShowFailureDialog)
                         LOGW("Sending default text despite being rejected by the guest with message: \"{}\"", message);

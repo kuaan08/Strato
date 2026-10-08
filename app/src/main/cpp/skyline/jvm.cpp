@@ -134,7 +134,11 @@ namespace skyline {
         std::u16string input{stringChars, stringChars + env->GetStringLength(inputJString)};
         env->ReleaseStringChars(inputJString, stringChars);
 
-        return {static_cast<KeyboardCloseResult>(env->CallIntMethod(buttonInteger, getIntegerValueId)), input};
+        const auto result{static_cast<KeyboardCloseResult>(env->CallIntMethod(buttonInteger, getIntegerValueId))};
+        env->DeleteLocalRef(inputJString);
+        env->DeleteLocalRef(buttonInteger);
+        env->DeleteLocalRef(returnArray);
+        return {result, input};
     }
 
     DhcpInfo JvmManager::GetDhcpInfo() {

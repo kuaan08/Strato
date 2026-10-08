@@ -31,11 +31,12 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.getSystemService
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import androidx.core.view.updateMargins
 import androidx.core.view.updatePadding
-import androidx.fragment.app.FragmentTransaction
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -120,6 +121,11 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     private var desiredRefreshRate = 60f
 
     private var isEmulatorPaused = false
+    private var menuOpen = false
+    private var resumeAfterMenu = false
+    private var audioMuted = false
+    private var keyboardDialog : SoftwareKeyboardDialog? = null
+    private var exitConfirmation : androidx.appcompat.app.AlertDialog? = null
 
     private lateinit var pictureInPictureParamsBuilder : PictureInPictureParams.Builder
 
@@ -286,6 +292,14 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         inputHandler = InputHandler(inputManager, emulationSettings)
         setContentView(binding.root)
+        audioMuted = emulationSettings.isAudioOutputDisabled
+        setupEmulationMenu()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (keyboardDialog != null) return
+                if (menuOpen) closeEmulationMenu() else openEmulationMenu()
+            }
+        })
 
         builtinVibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
@@ -332,7 +346,8 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
             }
         }
 
-        if (emulationSettings.perfStats) {
+        binding.perfStats.isGone = !emulationSettings.perfStats
+        run {
             if (emulationSettings.disableFrameThrottling)
                 binding.perfStats.setTextColor(getColor(R.color.colorPerfStatsSecondary))
 
@@ -378,18 +393,86 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
 
         binding.onScreenPauseToggle.apply {
             isGone = !emulationSettings.showPauseButton
-            setOnClickListener {
-                if (isEmulatorPaused) {
-                    resumeEmulator()
-                    binding.onScreenPauseToggle.setImageResource(R.drawable.ic_pause)
-                } else {
-                    pauseEmulator()
-                    binding.onScreenPauseToggle.setImageResource(R.drawable.ic_play)
-                }
-            }
+            setOnClickListener { openEmulationMenu() }
+            contentDescription = getString(R.string.emulation_menu)
         }
 
         executeApplication(intent!!)
+    }
+
+    private fun setupEmulationMenu() {
+        // Only Back/the menu button opens the drawer: edge swipes belong to the game.
+        binding.emulationDrawer.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+        binding.emulationDrawer.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerClosed(drawerView : View) {
+                menuOpen = false
+                if (resumeAfterMenu && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) resumeEmulator()
+                resumeAfterMenu = false
+                pictureInPictureParamsBuilder = getPictureInPictureBuilder()
+                binding.gameView.requestFocus()
+            }
+        })
+        binding.emulationMenu.setNavigationItemSelectedListener { selected ->
+            when (selected.itemId) {
+                R.id.menu_resume -> closeEmulationMenu()
+                R.id.menu_controls -> {
+                    selected.isChecked = !selected.isChecked
+                    binding.onScreenControllerView.isInvisible = !selected.isChecked
+                }
+                R.id.menu_fps -> {
+                    selected.isChecked = !selected.isChecked
+                    binding.perfStats.isGone = !selected.isChecked
+                }
+                R.id.menu_mute -> {
+                    audioMuted = !audioMuted
+                    selected.isChecked = audioMuted
+                }
+                R.id.menu_exit -> confirmExit()
+            }
+            // Checked state is managed above, including turning an item off.
+            false
+        }
+    }
+
+    private fun releaseGameInput() {
+        InputHandler.setTouchState(intArrayOf())
+        inputManager.controllers.keys.forEach { index ->
+            InputHandler.setButtonState(index, ButtonId.All.value, false)
+            AxisId.values().forEach { InputHandler.setAxisValue(index, it.ordinal, 0) }
+        }
+    }
+
+    private fun openEmulationMenu() {
+        if (menuOpen || keyboardDialog != null || isFinishing) return
+        resumeAfterMenu = !isEmulatorPaused
+        menuOpen = true
+        releaseGameInput()
+        pauseEmulator()
+        binding.emulationMenu.menu.apply {
+            findItem(R.id.menu_controls).apply {
+                isChecked = binding.onScreenControllerView.visibility == View.VISIBLE
+                isEnabled = !binding.onScreenControllerView.isGone
+            }
+            findItem(R.id.menu_fps).isChecked = !binding.perfStats.isGone
+            findItem(R.id.menu_mute).isChecked = audioMuted
+        }
+        pictureInPictureParamsBuilder = getPictureInPictureBuilder()
+        binding.emulationDrawer.openDrawer(GravityCompat.START)
+    }
+
+    private fun closeEmulationMenu() {
+        if (menuOpen) binding.emulationDrawer.closeDrawer(GravityCompat.START)
+    }
+
+    private fun confirmExit() {
+        if (exitConfirmation?.isShowing == true) return
+        exitConfirmation = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.emulation_exit)
+            .setMessage(R.string.emulation_exit_message)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.emulation_exit) { _, _ -> returnFromEmulation() }
+            .create()
+        exitConfirmation?.show()
     }
 
     @SuppressWarnings("WeakerAccess")
@@ -403,7 +486,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     @SuppressWarnings("WeakerAccess")
     fun resumeEmulator() {
         gameSurface?.let { setSurface(it) }
-        changeAudioStatus(!emulationSettings.isAudioOutputDisabled)
+        changeAudioStatus(!audioMuted)
         isEmulatorPaused = false
     }
 
@@ -416,20 +499,10 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         pauseEmulator()
     }
 
-    override fun onStart() {
-        super.onStart()
-
-        onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                returnFromEmulation()
-            }
-        })
-    }
-
     override fun onResume() {
         super.onResume()
 
-        resumeEmulator()
+        if (!menuOpen) resumeEmulator()
 
         GpuDriverHelper.forceMaxGpuClocks(emulationSettings.forceMaxGpuClocks)
 
@@ -462,7 +535,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
 
         pictureInPictureParamsBuilder.setActions(pictureInPictureActions)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-            pictureInPictureParamsBuilder.setAutoEnterEnabled(true)
+            pictureInPictureParamsBuilder.setAutoEnterEnabled(!menuOpen && keyboardDialog == null)
 
         setPictureInPictureParams(pictureInPictureParamsBuilder.build())
 
@@ -498,7 +571,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
             } catch (ignored : Exception) {
             }
 
-            resumeEmulator()
+            if (!menuOpen) resumeEmulator()
 
             binding.onScreenControllerView.apply {
                 controllerType = inputHandler.getFirstControllerType()
@@ -551,11 +624,14 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     }
 
     override fun onUserLeaveHint() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && !isInPictureInPictureMode)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && !isInPictureInPictureMode && !menuOpen && keyboardDialog == null)
             enterPictureInPictureMode(pictureInPictureParamsBuilder.build())
     }
 
     override fun onDestroy() {
+        keyboardDialog?.cancelForShutdown()
+        keyboardDialog = null
+        exitConfirmation?.dismiss()
         super.onDestroy()
         shouldFinish = false
 
@@ -618,6 +694,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         while (emulationThread!!.isAlive)
             if (setSurface(holder.surface)) {
                 gameSurface = holder.surface
+                if (menuOpen) setSurface(null)
                 return
             }
     }
@@ -657,21 +734,37 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     }
 
     override fun dispatchKeyEvent(event : KeyEvent) : Boolean {
+        if (keyboardDialog != null || menuOpen || event.keyCode == KeyEvent.KEYCODE_BACK)
+            return super.dispatchKeyEvent(event)
+        val mapped = event.device?.let { inputManager.eventMap[KeyHostEvent(it.descriptor, event.keyCode)] }
+        if (mapped is ButtonGuestEvent && mapped.button == ButtonId.Menu) {
+            if (event.action == KeyEvent.ACTION_UP) openEmulationMenu()
+            return true
+        }
         return if (inputHandler.handleKeyEvent(event)) true else super.dispatchKeyEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(event : MotionEvent) : Boolean {
+        if (menuOpen || keyboardDialog != null) return super.dispatchGenericMotionEvent(event)
         return if (inputHandler.handleMotionEvent(event)) true else super.dispatchGenericMotionEvent(event)
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouch(view : View, event : MotionEvent) : Boolean {
+        if (menuOpen || keyboardDialog != null) return true
         return inputHandler.handleTouchEvent(view, event)
     }
 
-    private fun onButtonStateChanged(buttonId : ButtonId, state : ButtonState) = InputHandler.setButtonState(0, buttonId.value, state.state)
+    private fun onButtonStateChanged(buttonId : ButtonId, state : ButtonState) {
+        if (buttonId == ButtonId.Menu) {
+            if (state == ButtonState.Released) openEmulationMenu()
+        } else if (!menuOpen && keyboardDialog == null) {
+            InputHandler.setButtonState(0, buttonId.value, state.state)
+        }
+    }
 
     private fun onStickStateChanged(stickId : StickId, position : PointF) {
+        if (menuOpen || keyboardDialog != null) return
         InputHandler.setAxisValue(0, stickId.xAxis.ordinal, (position.x * Short.MAX_VALUE).toInt())
         InputHandler.setAxisValue(0, stickId.yAxis.ordinal, (-position.y * Short.MAX_VALUE).toInt()) // Y is inverted, since drawing starts from top left
     }
@@ -721,16 +814,21 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         buffer.order(ByteOrder.LITTLE_ENDIAN)
         val config = ByteBufferSerializable.createFromByteBuffer(SoftwareKeyboardConfig::class, buffer) as SoftwareKeyboardConfig
 
-        val keyboardDialog = SoftwareKeyboardDialog.newInstance(config, initialText)
+        val dialog = SoftwareKeyboardDialog.newInstance(config, initialText)
         runOnUiThread {
-            val transaction = supportFragmentManager.beginTransaction()
-            transaction.setTransition(FragmentTransaction.TRANSIT_FRAGMENT_OPEN)
-            transaction
-                .add(android.R.id.content, keyboardDialog)
-                .addToBackStack(null)
-                .commit()
+            if (isFinishing || isDestroyed || supportFragmentManager.isStateSaved) {
+                dialog.cancelForShutdown()
+            } else {
+                // A real DialogFragment owns Back and hardware keyboard input while the
+                // guest waits. Do not put this on the activity's fragment back stack.
+                closeEmulationMenu()
+                releaseGameInput()
+                keyboardDialog = dialog
+                pictureInPictureParamsBuilder = getPictureInPictureBuilder()
+                dialog.showNow(supportFragmentManager, "software_keyboard")
+            }
         }
-        return keyboardDialog
+        return dialog
     }
 
     @Suppress("unused")
@@ -746,7 +844,11 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
 
     @Suppress("unused")
     fun closeKeyboard(dialog : SoftwareKeyboardDialog) {
-        runOnUiThread { dialog.dismiss() }
+        runOnUiThread {
+            if (keyboardDialog === dialog) keyboardDialog = null
+            dialog.dismissAllowingStateLoss()
+            if (!isDestroyed) pictureInPictureParamsBuilder = getPictureInPictureBuilder()
+        }
     }
 
     @Suppress("unused")
@@ -755,12 +857,20 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         var accepted = false
         val validatorResult = FutureTask { return@FutureTask accepted }
         runOnUiThread {
+            if (isFinishing || isDestroyed || !dialog.isAdded) {
+                dialog.cancelForShutdown()
+                validatorResult.run()
+                return@runOnUiThread
+            }
             val builder = MaterialAlertDialogBuilder(dialog.requireContext())
             builder.setMessage(message)
             builder.setPositiveButton(if (confirm) getString(android.R.string.ok) else getString(android.R.string.cancel)) { _, _ -> accepted = confirm }
             if (confirm)
                 builder.setNegativeButton(getString(android.R.string.cancel)) { _, _ -> }
-            builder.setOnDismissListener { validatorResult.run() }
+            builder.setOnDismissListener {
+                if (!accepted) dialog.prepareForRetry()
+                validatorResult.run()
+            }
             builder.show()
         }
         return if (validatorResult.get()) 0 else 1

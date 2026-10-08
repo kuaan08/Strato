@@ -11,56 +11,34 @@ import android.text.Spanned
 
 class SoftwareKeyboardFilter(val config : SoftwareKeyboardConfig) : InputFilter {
     override fun filter(source : CharSequence, start : Int, end : Int, dest : Spanned, dstart : Int, dend : Int) : CharSequence? {
-        val filteredStringBuilder = SpannableStringBuilder()
-        val newCharacterIndex = arrayOfNulls<Int>(end - start)
-        var currentIndex : Int
-
-        val sourceCodepoints = source.subSequence(start, end).codePoints().iterator()
-        val replacedLength = dest.subSequence(dstart, dend).length
-
-        var nextIndex = start
-        while (sourceCodepoints.hasNext()) {
-            var codepoint = sourceCodepoints.next()
-            currentIndex = nextIndex
-            nextIndex += Character.charCount(codepoint)
-
-            if (config.invalidCharsFlags.outsideOfDownloadCode)
-                codepoint = Character.toUpperCase(codepoint)
-            if (!config.isValid(codepoint))
-                continue
-            // Check if the string would be over the maximum length after adding this character
-            if (dest.length - replacedLength + filteredStringBuilder.length + Character.charCount(codepoint) > config.textMaxLength.toInt())
-                break
-            else
-                // Keep track where in the new string each character ended up
-                newCharacterIndex[currentIndex - start] = filteredStringBuilder.length
-            filteredStringBuilder.append(String(Character.toChars(codepoint)))
+        val output = SpannableStringBuilder()
+        val positions = IntArray(end - start + 1)
+        val prefix = dest.subSequence(0, dstart).toString()
+        val suffix = dest.subSequence(dend, dest.length).toString()
+        var index = start
+        while (index < end) {
+            val original = Character.codePointAt(source, index)
+            val count = Character.charCount(original).coerceAtMost(end - index)
+            val codepoint = if (config.invalidCharsFlags.outsideOfDownloadCode) Character.toUpperCase(original) else original
+            val character = String(Character.toChars(codepoint))
+            for (i in 0 until count) positions[index - start + i] = output.length
+            val candidate = prefix + output + character + suffix
+            if (config.isValid(codepoint) && candidate.length <= config.textMaxLength.toInt() &&
+                (!config.isUseUtf8 || candidate.toByteArray(Charsets.UTF_8).size < 0x7D4)) {
+                output.append(character)
+            }
+            index += count
+            positions[index - start] = output.length
         }
-
+        if (output.toString() == source.subSequence(start, end).toString()) return null
         if (source is Spanned) {
-            // Copy the spans from the source to the returned SpannableStringBuilder
-                for (span in source.getSpans(start, end, Any::class.java)) {
-                    val spanStart = source.getSpanStart(span) - start
-                    val spanEnd = source.getSpanEnd(span) - start
-
-                    currentIndex = spanStart
-                    var newStart = newCharacterIndex[currentIndex]
-                    // Make the new span's start be at the first character that was in the span's range and wasn't removed
-                    while (newStart == null && currentIndex < spanEnd - 1) {
-                        newStart = newCharacterIndex[++currentIndex]
-                    }
-
-                    currentIndex = spanEnd - 1
-                    var newEnd = newCharacterIndex[currentIndex]
-                    // Make the span end be at the last character that was in the span's range and wasn't removed
-                    while (newEnd == null && currentIndex > spanStart) {
-                        newEnd = newCharacterIndex[--currentIndex]
-                    }
-
-                    if(newStart != null && newEnd != null)
-                        filteredStringBuilder.setSpan(span, newStart, newEnd + 1, source.getSpanFlags(span))
-                }
+            for (span in source.getSpans(start, end, Any::class.java)) {
+                val from = source.getSpanStart(span).coerceIn(start, end) - start
+                val to = source.getSpanEnd(span).coerceIn(start, end) - start
+                if (positions[from] < positions[to])
+                    output.setSpan(span, positions[from], positions[to], source.getSpanFlags(span))
+            }
         }
-        return filteredStringBuilder
+        return output
     }
 }

@@ -183,6 +183,7 @@ data class SoftwareKeyboardConfig(
     @param:ByteBufferSerializable.ByteBufferSerializablePadding(0x4) val reserved2 : ByteBufferSerializable.ByteBufferPadding = ByteBufferSerializable.ByteBufferPadding,
 ) : ByteBufferSerializable {
     fun isValid(codepoint : Int) : Boolean {
+        if (codepoint == 0 || codepoint in 0xD800..0xDFFF) return false
         when (keyboardMode) {
             KeyboardMode.Numeric -> {
                 if (!(codepoint in '0'.code..'9'.code || codepoint == leftOptionalSymbolKey.code || codepoint == rightOptionalSymbolKey.code))
@@ -213,6 +214,7 @@ data class SoftwareKeyboardConfig(
     }
 
     fun isValid(string : String) : Boolean {
+        if (isUseUtf8 && string.toByteArray(Charsets.UTF_8).size >= 0x7D4) return false
         if (string.length !in textMinLength.toInt()..textMaxLength.toInt())
             return false
         for (codepoint in string.codePoints()) {
@@ -223,6 +225,7 @@ data class SoftwareKeyboardConfig(
     }
 
     fun isValid(chars : CharSequence) : Boolean {
+        if (isUseUtf8 && chars.toString().toByteArray(Charsets.UTF_8).size >= 0x7D4) return false
         if (chars.length !in textMinLength.toInt()..textMaxLength.toInt())
             return false
         for (codepoint in chars.codePoints()) {
