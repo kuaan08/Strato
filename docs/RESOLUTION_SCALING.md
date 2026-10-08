@@ -10,9 +10,11 @@ This work builds on `feature/resolution-scaling` at
 `e7291091b61388af2993a67042258c69e940354e`.
 Commit `5bd431b8e707dc36444666a9697b99610d9d68bc` passed the Android arm64
 build and every workflow test in [run 37716191859](https://github.com/LukeValen/Strato-Mali/actions/runs/37716191859).
-The APK is available as the `Strato-Mali-APK` artifact. **Game tests on Mali/PanVK
-are still pending.** Build and host-test success do not establish Eden parity,
-game compatibility, performance or crash freedom.
+The APK is available as the `Strato-Mali-APK` artifact. The user observed
+resolution scaling working in Celeste with docked mode disabled on the device.
+The exact factor, driver version, performance and docked behavior were not
+recorded. Other games and settings still need device validation. Build and
+host-test success do not establish Eden parity or crash freedom.
 
 - A texture-cache entry owns a persistent scaled companion. Its original image,
   guest allocations, tiling, pitches and addresses remain native.
@@ -73,6 +75,8 @@ image-size queries. These require game-level validation. This is not full Eden p
   or instantiate the full emulator's texture manager.
 - Android arm64 release compilation, Kotlin/resources validation and all workflow
   regression tests passed for commit `5bd431b`.
+- Celeste: user-reported visible scaling with docked mode disabled; no
+  measurements or factor-by-factor results supplied yet.
 - Full-renderer validation, translated shader tests and Mali/PanVK device
   measurements remain required before release.
 
