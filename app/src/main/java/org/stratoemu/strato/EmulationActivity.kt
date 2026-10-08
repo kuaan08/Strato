@@ -404,12 +404,12 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         // Only Back/the menu button opens the drawer: edge swipes belong to the game.
         binding.emulationDrawer.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
         binding.emulationDrawer.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
-            override fun onDrawerClosed(drawerView : View) {
-                menuOpen = false
-                if (resumeAfterMenu && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) resumeEmulator()
-                resumeAfterMenu = false
-                pictureInPictureParamsBuilder = getPictureInPictureBuilder()
-                binding.gameView.requestFocus()
+            override fun onDrawerClosed(drawerView : View) = finishClosingMenu()
+
+            override fun onDrawerStateChanged(newState : Int) {
+                // Back can interrupt opening before DrawerLayout marks it fully open.
+                if (newState == DrawerLayout.STATE_IDLE && !binding.emulationDrawer.isDrawerVisible(GravityCompat.START))
+                    finishClosingMenu()
             }
         })
         binding.emulationMenu.setNavigationItemSelectedListener { selected ->
@@ -432,6 +432,15 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
             // Checked state is managed above, including turning an item off.
             false
         }
+    }
+
+    private fun finishClosingMenu() {
+        if (!menuOpen) return
+        menuOpen = false
+        if (resumeAfterMenu && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) resumeEmulator()
+        resumeAfterMenu = false
+        pictureInPictureParamsBuilder = getPictureInPictureBuilder()
+        binding.gameView.requestFocus()
     }
 
     private fun releaseGameInput() {
