@@ -855,7 +855,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     fun closeKeyboard(dialog : SoftwareKeyboardDialog) {
         runOnUiThread {
             if (keyboardDialog === dialog) keyboardDialog = null
-            dialog.dismissAllowingStateLoss()
+            if (dialog.isAdded) dialog.dismissAllowingStateLoss() else dialog.cancelForShutdown()
             if (!isDestroyed) pictureInPictureParamsBuilder = getPictureInPictureBuilder()
         }
     }
