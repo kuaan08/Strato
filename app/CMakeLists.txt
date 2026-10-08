@@ -122,6 +122,9 @@ endfunction(target_link_libraries_system)
 
 # yuzu Shader Compiler
 add_subdirectory("libraries/shader-compiler")
+# The pinned compiler declares a TU-local settings object. Override that header
+# consistently for both the compiler and renderer so scaling settings propagate.
+target_include_directories(shader_recompiler BEFORE PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp/shader_compiler_overrides")
 target_include_directories(shader_recompiler PUBLIC "libraries/shader-compiler/include")
 target_link_libraries_system(shader_recompiler Boost::intrusive Boost::container range-v3)
 

@@ -14,6 +14,7 @@
 #include <vulkan/vulkan_enums.hpp>
 #include "graphics_pipeline_state_accessor.h"
 #include "pipeline_manager.h"
+#include <gpu/resolution_shader.h>
 #include "soc/gm20b/engines/maxwell/types.h"
 
 namespace skyline::gpu::interconnect::maxwell3d {
@@ -21,6 +22,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
         vk::ShaderStageFlagBits stage;
         vk::ShaderModule module;
         Shader::Info info;
+        bool resolutionScalingEnabled{};
     };
 
     static constexpr Shader::Stage ConvertCompilerShaderStage(engine::Pipeline::Shader::Type stage) {
@@ -196,7 +198,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
         return info;
     }
 
-    static std::array<ShaderStage, engine::ShaderStageCount> MakePipelineShaders(GPU &gpu, const PipelineStateAccessor &accessor, const PackedPipelineState &packedState) {
+    static std::array<ShaderStage, engine::ShaderStageCount> MakePipelineShaders(GPU &gpu, const PipelineStateAccessor &accessor, const PackedPipelineState &packedState, bool enableResolutionScaling = true) {
         gpu.shader->ResetPools();
 
         using PipelineStage = engine::Pipeline::Shader::Type;
@@ -227,7 +229,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
                     return accessor.GetConstantBufferValue(shaderStage, index, offset);
                 }, [&](u32 index) {
                     return accessor.GetTextureType(BindlessHandle{ .raw = index }.textureIndex);
-                })};
+                }, enableResolutionScaling)};
             if (i == stageIdx(PipelineStage::Vertex) && packedState.shaderHashes[stageIdx(PipelineStage::VertexCullBeforeFetch)]) {
                 ignoreVertexCullBeforeFetch = true;
                 programs[i] = gpu.shader->CombineVertexShaders(programs[stageIdx(PipelineStage::VertexCullBeforeFetch)], program, binary.binary);
@@ -237,6 +239,22 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
             if (programs[i].info.requires_layer_emulation)
                 layerConversionSourceProgram = &programs[i];
+        }
+
+        // The pinned compiler has 128 texture bits shared by all stages. Its
+        // separate render-area push block also overlaps the rescaling block.
+        // Re-translate exceptional pipelines without that pass, before emitting
+        // SPIR-V, instead of generating out-of-bounds/conflicting constants.
+        size_t textureBits{}, imageBits{};
+        bool usesRenderArea{};
+        for (const auto &program : programs) {
+            textureBits += program.info.texture_descriptors.size();
+            imageBits += program.info.image_descriptors.size();
+            usesRenderArea |= program.info.uses_render_area;
+        }
+        if (enableResolutionScaling && !gpu.resolutionScale.IsNative() && (textureBits > 128 || imageBits > 64 || usesRenderArea)) {
+            LOGW("Native resolution pipeline: scaling ABI limit (textures={}, images={}, renderArea={})", textureBits, imageBits, usesRenderArea);
+            return MakePipelineShaders(gpu, accessor, packedState, false);
         }
 
         bool hasGeometry{packedState.shaderHashes[stageIdx(PipelineStage::Geometry)] && !programs[stageIdx(PipelineStage::Geometry)].is_geometry_passthrough};
@@ -252,7 +270,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
             auto runtimeInfo{MakeRuntimeInfo(packedState, programs[i], lastProgram, hasGeometry)};
             shaderStages[i - (i >= 1 ? 1 : 0)] = {ConvertVkShaderStage(pipelineStage(i)),
                                                   gpu.shader->CompileShader(runtimeInfo, programs[i], bindings, packedState.shaderHashes[i]),
-                                                  programs[i].info};
+                                                  programs[i].info, enableResolutionScaling};
 
             lastProgram = &programs[i];
         }
@@ -644,6 +662,9 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
         texture::Format depthStencilFormat{packedState.GetDepthRenderTargetFormat()};
 
+        const std::array<vk::PushConstantRange, 1> scaleRanges{vk::PushConstantRange{
+            .stageFlags = vk::ShaderStageFlagBits::eAllGraphics, .offset = 0, .size = sizeof(resolution::ShaderScale),
+        }};
         return gpu.graphicsPipelineAssembler->AssemblePipelineAsync(GraphicsPipelineAssembler::PipelineState{
             .shaderStages = shaderStageInfos,
             .vertexState = vertexInputState,
@@ -659,7 +680,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
             .depthStencilFormat = depthStencilFormat ? depthStencilFormat->vkFormat : vk::Format::eUndefined,
             .sampleCount = vk::SampleCountFlagBits::e1, //TODO: fix after MSAA support
             .destroyShaderModules = true
-        }, layoutBindings);
+        }, layoutBindings, gpu.resolutionScale.IsNative() ? span<const vk::PushConstantRange>{} : span<const vk::PushConstantRange>{scaleRanges});
     }
 
     Pipeline::Pipeline(GPU &gpu, PipelineStateAccessor &accessor, const PackedPipelineState &packedState)
@@ -672,15 +693,13 @@ namespace skyline::gpu::interconnect::maxwell3d {
         for (const auto &stage : shaderStages) {
             if (stage.stage == vk::ShaderStageFlagBits{}) continue;
             const auto &info{stage.info};
-            if (info.stores_global_memory ||
+            if (!stage.resolutionScalingEnabled || info.stores_global_memory ||
                 std::any_of(info.storage_buffers_descriptors.begin(), info.storage_buffers_descriptors.end(), [](const auto &desc) { return desc.is_written; }) ||
                 !info.image_descriptors.empty() ||
                 !info.image_buffer_descriptors.empty() || info.stores_sample_mask ||
                 info.uses_sample_id || info.uses_render_area || info.requires_layer_emulation)
                 supportsResolutionScaling = false;
-            if (stage.stage == vk::ShaderStageFlagBits::eFragment &&
-                (info.loads[Shader::IR::Attribute::PositionX] || info.loads[Shader::IR::Attribute::PositionY] ||
-                 info.loads_indexed_attributes))
+            if (stage.stage == vk::ShaderStageFlagBits::eFragment && info.loads_indexed_attributes)
                 supportsResolutionScaling = false;
         }
         descriptorInfo = MakePipelineDescriptorInfo(shaderStages, gpu.traits.quirks.needsIndividualTextureBindingWrites);
@@ -761,6 +780,8 @@ namespace skyline::gpu::interconnect::maxwell3d {
         u32 imageIdx{};
         auto imageDescs{ctx.executor.allocator->AllocateUntracked<vk::DescriptorImageInfo>(descriptorInfo.totalImageDescCount)};
 
+        auto resolutionImages{ctx.executor.allocator->AllocateUntracked<ResolutionImageBinding>(descriptorInfo.totalCombinedImageSamplerCount)};
+        u32 resolutionImageIdx{}, textureScalingIndex{};
         u32 storageBufferIdx{}; // Need to keep track of this to index into the cached view array
         u32 combinedImageSamplerIdx{}; // Need to keep track of this to index into the sampled image array
         u32 bindingIdx{};
@@ -810,8 +831,15 @@ namespace skyline::gpu::interconnect::maxwell3d {
                         };
                     }
 
-                    for (u32 arrayIdx{}; arrayIdx < desc.count; arrayIdx++)
-                        imageDescs[imageIdx++] = getTextureCb(desc, arrayIdx);
+                    for (u32 arrayIdx{}; arrayIdx < desc.count; arrayIdx++) {
+                        imageDescs[imageIdx] = getTextureCb(desc, arrayIdx);
+                        resolutionImages[resolutionImageIdx++] = {
+                            &imageDescs[imageIdx], sampledImages[combinedImageSamplerIdx - 1],
+                            textureScalingIndex, desc.count == 1 && textureScalingIndex < 128,
+                        };
+                        imageIdx++;
+                    }
+                    textureScalingIndex++;
                 }
             }
         }};
@@ -864,6 +892,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
             .descriptorSetLayout = *compiledPipeline.descriptorSetLayout,
             .bindPoint = vk::PipelineBindPoint::eGraphics,
             .descriptorSetIndex = 0,
+            .resolutionImages = {resolutionImages.data(), resolutionImageIdx},
         });
     }
 

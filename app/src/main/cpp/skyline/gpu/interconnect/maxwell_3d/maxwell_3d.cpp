@@ -146,7 +146,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
 
          auto *descUpdateInfo{[&]() -> DescriptorUpdateInfo * {
-             if (((oldPipeline == pipeline) || (oldPipeline && oldPipeline->CheckBindingMatch(pipeline))) && constantBuffers.quickBindEnabled) {
+             if (ctx.gpu.resolutionScale.IsNative() && ((oldPipeline == pipeline) || (oldPipeline && oldPipeline->CheckBindingMatch(pipeline))) && constantBuffers.quickBindEnabled) {
                  // If bindings between the old and new pipelines are the same we can reuse the descriptor sets given that quick bind is enabled (meaning that no buffer updates or calls to non-graphics engines have occurred that could invalidate them)
                  if (constantBuffers.quickBind)
                      // If only a single constant buffer has been rebound between draws we can perform a partial descriptor update
@@ -244,7 +244,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
                                                                   (clearSurface.aEnable ? vk::ColorComponentFlagBits::eA : vk::ColorComponentFlags{}),
                                                                   {clearEngineRegisters.colorClearValue}, &*view, [=](auto &&executionCallback) {
                         auto dst{view.get()};
-                        ctx.executor.AddSubpass(std::move(executionCallback), renderArea, {}, {}, span<TextureView *>{dst}, nullptr);
+                        ctx.executor.AddSubpass(std::move(executionCallback), renderArea, {}, {}, span<TextureView *>{dst}, nullptr, false, {}, {}, true);
                     });
                     ctx.executor.NotifyPipelineChange();
                 } else if (needsAttachmentClearCmd(view)) {
@@ -287,8 +287,10 @@ namespace skyline::gpu::interconnect::maxwell3d {
         if (!clearAttachments.empty()) {
             std::array<TextureView *, 1> colorAttachments{colorView ? &*colorView : nullptr};
             ctx.executor.AddSubpass([clearAttachments, clearRects](vk::raii::CommandBuffer &commandBuffer, const std::shared_ptr<FenceCycle> &, GPU &, vk::RenderPass, u32) {
-                commandBuffer.clearAttachments(clearAttachments, span(clearRects).first(clearAttachments.size()));
-            }, renderArea, {}, {}, colorView ? colorAttachments : span<TextureView *>{}, depthStencilView ? &*depthStencilView : nullptr);
+                auto scaledRects{clearRects};
+                for (auto &rect : scaledRects) rect.rect = renderResolutionState.Transform(rect.rect);
+                commandBuffer.clearAttachments(clearAttachments, span(scaledRects).first(clearAttachments.size()));
+            }, renderArea, {}, {}, colorView ? colorAttachments : span<TextureView *>{}, depthStencilView ? &*depthStencilView : nullptr, false, {}, {}, true);
         }
 
         ctx.executor.AddCheckpoint("After clear");

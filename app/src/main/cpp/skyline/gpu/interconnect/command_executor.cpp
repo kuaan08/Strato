@@ -406,8 +406,13 @@ namespace skyline::gpu::interconnect {
             if (view)
                 view->texture->UpdateRenderPassUsage(renderPassIndex, texture::RenderPassUsage::RenderTarget);
 
-        for (auto view : sampledImages)
+        for (auto view : sampledImages) {
             view->texture->UpdateRenderPassUsage(renderPassIndex, texture::RenderPassUsage::Sampled);
+            if (!gpu.resolutionScale.IsNative() &&
+                std::none_of(renderPass->sampledViews.begin(), renderPass->sampledViews.end(),
+                    [view](const auto &old) { return old.get() == view; }))
+                renderPass->sampledViews.push_back(view->shared_from_this());
+        }
 
         return gotoNext;
     }
@@ -542,7 +547,7 @@ namespace skyline::gpu::interconnect {
     }
 
     void CommandExecutor::AddClearColorSubpass(TextureView *attachment, const vk::ClearColorValue &value) {
-        bool gotoNext{CreateRenderPassWithSubpass(vk::Rect2D{.extent = attachment->texture->dimensions}, {}, {}, attachment, nullptr)};
+        bool gotoNext{CreateRenderPassWithSubpass(vk::Rect2D{.extent = attachment->texture->dimensions}, {}, {}, attachment, nullptr, false, {}, {}, true)};
         if (renderPass->ClearColorAttachment(0, value, gpu)) {
             if (gotoNext)
                 slot->nodes.emplace_back(std::in_place_type_t<node::NextSubpassNode>());
@@ -553,7 +558,7 @@ namespace skyline::gpu::interconnect {
                     .colorAttachment = 0,
                     .clearValue = value,
                 }, vk::ClearRect{
-                    .rect = vk::Rect2D{.extent = scissor},
+                    .rect = renderResolutionState.Transform(vk::Rect2D{.extent = scissor}),
                     .baseArrayLayer = 0,
                     .layerCount = 1,
                 });
@@ -567,7 +572,7 @@ namespace skyline::gpu::interconnect {
     }
 
     void CommandExecutor::AddClearDepthStencilSubpass(TextureView *attachment, const vk::ClearDepthStencilValue &value) {
-        bool gotoNext{CreateRenderPassWithSubpass(vk::Rect2D{.extent = attachment->texture->dimensions}, {}, {}, {}, attachment)};
+        bool gotoNext{CreateRenderPassWithSubpass(vk::Rect2D{.extent = attachment->texture->dimensions}, {}, {}, {}, attachment, false, {}, {}, true)};
         if (renderPass->ClearDepthStencilAttachment(value, gpu)) {
             if (gotoNext)
                 slot->nodes.emplace_back(std::in_place_type_t<node::NextSubpassNode>());

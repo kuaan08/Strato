@@ -55,6 +55,7 @@ namespace skyline::gpu::interconnect::node {
         vk::PipelineStageFlags dependencySrcStageMask;
         vk::PipelineStageFlags dependencyDstStageMask;
 
+        std::vector<std::shared_ptr<TextureView>> sampledViews;
         bool allowResolutionScaling{};
         vk::Rect2D renderArea;
         std::vector<vk::ClearValue> clearValues;

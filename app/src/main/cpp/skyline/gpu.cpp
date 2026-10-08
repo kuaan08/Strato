@@ -422,7 +422,7 @@ namespace skyline::gpu {
           renderPassCache(*this),
           framebufferCache(*this),
           debugTracingBuffer(memory.AllocateBuffer(DebugTracingBufferSize)) {
-        LOGI("Internal resolution scale: {}x (experimental render-pass scaling)", resolutionScale.Factor());
+        LOGI("Internal resolution scale: {}x (texture-cache scaling)", resolutionScale.Factor());
     }
 
     void GPU::Initialise() {

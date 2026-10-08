@@ -18,7 +18,20 @@ void main() { gl_Position = vec4(positions[gl_VertexIndex], 0.25, 1); }
 ''')
     (path / 'triangle.frag').write_text('''#version 450
 layout(location=0) out vec4 color;
-void main() { color = vec4(1,0,0,1); }
+layout(set=0, binding=0) uniform sampler2D sourceImage;
+layout(push_constant) uniform ResolutionInfo {
+ layout(offset=0) uint textures[4];
+ layout(offset=16) uint images[2];
+ layout(offset=24) float downFactor;
+} scaling;
+void main() {
+ vec2 nativeCoord = gl_FragCoord.xy * scaling.downFactor;
+ bool scaledImage = (scaling.textures[0] & 1u) != 0u;
+ ivec2 coord = ivec2(nativeCoord * (scaledImage ? 1.0 / scaling.downFactor : 1.0));
+ vec4 source = texelFetch(sourceImage, coord, 0);
+ bool abiValid = scaling.textures[3] == 0x80000000u && scaling.images[0] == 0u && scaling.images[1] == 0u;
+ color = vec4(abiValid ? source.r : 0.0, nativeCoord.x / 255.0, 0, 1);
+}
 ''')
     for stage in ('vert', 'frag'):
         subprocess.run([glslang, '-V', str(path / ('triangle.' + stage)), '-o', str(path / (stage + '.spv'))], check=True)

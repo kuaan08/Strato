@@ -364,6 +364,9 @@ namespace skyline::gpu {
          * @note The texture **must** be locked prior to calling this
          */
         vk::ImageView GetView();
+        // Recording-thread only. Returns null for views that cannot use the
+        // scaled companion; this never silently substitutes a different view.
+        vk::ImageView GetScaledView();
 
         bool operator==(const TextureView &rhs) {
             return texture == rhs.texture && type == rhs.type && format == rhs.format && mapping == rhs.mapping && range == rhs.range;
@@ -484,7 +487,12 @@ namespace skyline::gpu {
         size_t deswizzledSurfaceSize{}; //!< The size of the guest surface with linear tiling, calculated with the guest format which may differ from the host format
         size_t surfaceSize{}; //!< The size of the entire surface given linear tiling, this contains all mip levels and layers
         vk::SampleCountFlagBits sampleCount;
-        std::shared_ptr<ScaledRenderTarget> scaledRenderTarget; //!< Accessed only by the command recording thread
+        std::shared_ptr<ScaledRenderTarget> scaledRenderTarget; //!< Recording thread; external users wait for cycle submission
+        std::atomic<u64> nativeWriteVersion{};
+        bool EnsureScaledImage();
+        bool HasScaledContent() const;
+        void InvalidateScaledContent() { nativeWriteVersion.fetch_add(1, std::memory_order_relaxed); }
+
         bool replaced{};
 
         /**

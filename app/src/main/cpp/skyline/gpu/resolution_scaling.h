@@ -14,6 +14,8 @@ public:
     static constexpr Scale FromSetting(int index) {
         return Scale(index >= 0 && index < 7 ? unsigned(index + 2) : 4);
     }
+    constexpr unsigned Numerator() const { return quarters; }
+    constexpr unsigned DenominatorShift() const { return 2; }
     constexpr bool IsNative() const { return quarters == 4; }
     constexpr float Factor() const { return float(quarters) / 4.0f; }
     struct Extent { std::uint32_t width, height; };

@@ -12,6 +12,7 @@
 #include <shader_compiler/backend/spirv/emit_spirv.h>
 #include <vulkan/vulkan_raii.hpp>
 #include "shader_manager.h"
+#include <gpu/resolution_shader.h>
 
 static constexpr bool DumpShaders{false};
 
@@ -80,6 +81,9 @@ namespace skyline::gpu {
                 std::filesystem::create_directories(dumpPath);
         }
 
+        static_assert(sizeof(resolution::ShaderScale) == sizeof(Shader::Backend::SPIRV::RescalingLayout));
+        static_assert(offsetof(resolution::ShaderScale, downFactor) ==
+            Shader::Backend::SPIRV::RESCALING_LAYOUT_DOWN_FACTOR_OFFSET);
         auto &traits{gpu.traits};
         hostTranslateInfo = Shader::HostTranslateInfo{
             .support_float16 = traits.supportsFloat16,
@@ -140,7 +144,12 @@ namespace skyline::gpu {
             .disable_shader_loop_safety_checks = true,
             #endif
             .resolution_info = {
-                .active = false,
+                .up_scale = gpu.resolutionScale.Numerator(),
+                .down_shift = gpu.resolutionScale.DenominatorShift(),
+                .up_factor = gpu.resolutionScale.Factor(),
+                .down_factor = 1.0f / gpu.resolutionScale.Factor(),
+                .active = !gpu.resolutionScale.IsNative(),
+                .downscale = gpu.resolutionScale.Factor() < 1.0f,
             },
         };
     }
@@ -385,11 +394,16 @@ namespace skyline::gpu {
                                                            u64 hash, span<u8> binary, u32 baseOffset,
                                                            u32 textureConstantBufferIndex,
                                                            bool viewportTransformEnabled,
-                                                           const ConstantBufferRead &constantBufferRead, const GetTextureType &getTextureType) {
+                                                           const ConstantBufferRead &constantBufferRead, const GetTextureType &getTextureType, bool enableResolutionScaling) {
         binary = ProcessShaderBinary(false, hash, binary);
 
         std::scoped_lock lock{poolMutex};
 
+        struct RestoreScaling {
+            bool active{Shader::Settings::values.resolution_info.active};
+            ~RestoreScaling() { Shader::Settings::values.resolution_info.active = active; }
+        } restoreScaling;
+        Shader::Settings::values.resolution_info.active = restoreScaling.active && enableResolutionScaling;
         GraphicsEnvironment environment{postVtgShaderAttributeSkipMask, stage, binary, baseOffset, textureConstantBufferIndex, viewportTransformEnabled, constantBufferRead, getTextureType};
         Shader::Maxwell::Flow::CFG cfg{environment, flowBlockPool, Shader::Maxwell::Location{static_cast<u32>(baseOffset + sizeof(Shader::ProgramHeader))}};
         return  Shader::Maxwell::TranslateProgram(instructionPool, blockPool, environment, cfg, hostTranslateInfo);
@@ -419,6 +433,13 @@ namespace skyline::gpu {
 
         ComputeEnvironment environment{binary, baseOffset, textureConstantBufferIndex, localMemorySize, sharedMemorySize, workgroupDimensions, constantBufferRead, getTextureType};
         Shader::Maxwell::Flow::CFG cfg{environment, flowBlockPool, Shader::Maxwell::Location{static_cast<u32>(baseOffset)}};
+        // Compute still uses native images; its pipeline layout has no scaling
+        // constants. Restore the global compiler setting even if translation throws.
+        struct RestoreScaling {
+            bool active{Shader::Settings::values.resolution_info.active};
+            ~RestoreScaling() { Shader::Settings::values.resolution_info.active = active; }
+        } restoreScaling;
+        Shader::Settings::values.resolution_info.active = false;
         return Shader::Maxwell::TranslateProgram(instructionPool, blockPool, environment, cfg, hostTranslateInfo);
     }
 
@@ -429,7 +450,8 @@ namespace skyline::gpu {
             Shader::Maxwell::ConvertLegacyToGeneric(program, runtimeInfo);
 
         auto spirvEmitted{Shader::Backend::SPIRV::EmitSPIRV(profile, runtimeInfo, program, bindings)};
-        auto spirv{ProcessShaderBinary(true, hash, span<u32>{spirvEmitted}.cast<u8>()).cast<u32>()};
+        auto spirv{program.info.uses_rescaling_uniform ? span<u32>{spirvEmitted} :
+            ProcessShaderBinary(true, hash, span<u32>{spirvEmitted}.cast<u8>()).cast<u32>()};
 
         vk::ShaderModuleCreateInfo createInfo{
             .pCode = spirv.data(),

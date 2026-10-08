@@ -1,59 +1,82 @@
-# Experimental internal resolution scaling
+# Experimental texture-cache resolution scaling
 
-The selector is in global Settings > Graphics and in per-title display settings.
-Available values: 0.50x, 0.75x, 1x (default), 1.25x, 1.50x, 1.75x and 2x.
-Restart the game to apply a change. Invalid preference values use native resolution.
+The selector is in global Settings > Graphics and per-title settings: 0.50x,
+0.75x, 1x (default), 1.25x, 1.50x, 1.75x and 2x. Restart the game after changing
+it. Invalid preference indices use 1x.
 
-## Implementation and limits
+## Integration checkpoint
 
-Eligible graphics passes render to real scaled Vulkan color/depth/stencil attachments.
-Native contents are loaded before the pass; results are resolved to the original images
-before any subsequent guest texture sampling, image copies, CPU readback or presentation.
-Guest addresses, tiling, pitches, allocations and sampled image dimensions remain native.
-Viewports and scissors scale with the actual rounded image dimensions. Cached native
-viewport/scissor state is restored when switching back to a native pass.
-Scaled images and transient framebuffers are retained by the submission fence cycle.
-The original 1x texture allocation and presentation paths remain in use.
+This work builds on `feature/resolution-scaling` at
+`e7291091b61388af2993a67042258c69e940354e`.
+**The Android build and device tests of these changes are pending.** Host tests
+alone do not establish Eden parity, game compatibility, performance or crash freedom.
 
-This is NOT full Eden resolution-scaling parity. Eden retains scaled texture-cache images
-and applies shader coordinate compensation. This first Strato implementation isolates
-rasterization and keeps guest-visible images native. The extra resolve/load blits can
-outweigh reduced fragment work, especially for many short passes. No FPS improvement
-or crash-free gameplay is claimed without device measurements.
+- A texture-cache entry owns a persistent scaled companion. Its original image,
+  guest allocations, tiling, pitches and addresses remain native.
+- Compatible 2D views share that companion, including their component swizzles
+  and depth/stencil sampling aspect. Graphics descriptors select views at command
+  recording time, after preceding render passes have established their contents.
+- The pinned shader compiler's RescalingPass receives the selected rational
+  factor. A 32-byte push-constant block supplies the render down factor and the
+  per-descriptor texture bitset across graphics stages. Full descriptor updates
+  are used for scaled sessions so a cached native descriptor cannot survive a
+  native-to-scaled transition.
+- The pinned compiler declares `Settings::values` with internal linkage. A small
+  CMake include override changes it to one inline variable shared by renderer,
+  translation and optimization. The submodule itself is not modified.
+- Render area, viewport, scissor, clears and Fermi2D helper draws use the selected
+  factor. Partial render areas and mixed attachment extents are accepted when
+  all views and bounds are valid. Framebuffer dimensions fit every attachment.
+- A version counter invalidates scaled contents on CPU uploads, native passes
+  and image copies. Existing scaled contents are reused instead of being rebuilt
+  from the native image at every render pass. Uploads wait for prior recording
+  before changing this version.
+- Same-format full color copies preserve scaled companions when possible.
+  Presentation uses a valid scaled source directly when format and subresource
+  constraints permit. Fermi2D samples the current companion with normalized UVs.
+- Native images are still resolved eagerly after scaled passes. This conservative
+  coherency policy keeps CPU readback, compute, incompatible aliases and existing
+  native consumers correct; it retains a bandwidth cost compared with Eden's
+  more extensive lazy texture-cache synchronization.
+- Sampled companions, images, views and framebuffers remain alive through their
+  submission fence. Extents, supported formats and a 128 MiB reservation budget
+  are checked. Optional allocation failures fall back; device loss still propagates.
 
-Whole passes remain native for partial/mixed attachment sizes, input/feedback attachments,
-layered/mip views, multisampling, non-triangle topology, screen-coordinate fragment shader
-reads, storage writes or unsupported blit formats. Precise occlusion queries disable scaling
-for the remainder of the emulation session to retain native pixel counter semantics.
-Image/framebuffer/viewport device limits are checked. Additional scaled image memory
-has a 128 MiB reservation limit; passes exceeding it remain native. Optional allocation failures disable
-scaling for the session and are logged; unrelated errors and device loss still propagate.
+## Remaining limits
 
-## Validation
+Layered/mip render views, MSAA, non-triangle topology, attachment feedback, storage
+writes, indexed fragment attributes, precise occlusion queries and unsupported
+formats retain native rendering. Descriptor arrays retain native sampling because
+one compiler scaling bit covers the entire array. Format-reinterpreting aliases
+and non-base-mip sampling retain native views. Compute remains native; the existing
+Strato image/storage descriptor implementation is incomplete and is not filled in
+by this change. Compiler ABI overflow and render-area push-constant conflicts use
+an explicitly unscaled shader variant. Host SPIR-V replacements are not substituted
+for shaders requiring rescaling constants, since they have not been patched.
 
-- `tests/test_resolution_scaling.py`: all ratios, tiny/odd dimensions, invalid indices,
-  integer overflow and device limits, with ASan/UBSan.
-- `tests/test_resolution_vulkan.py`: actual rasterization at seven scales and even/odd
-  dimensions with the shared renderer blit and dynamic-state code. Verifies color,
-  depth, stencil, native CPU readback, negative-height viewports and restoring cached
-  native state in a subsequent native draw, with Khronos validation and synchronization
-  validation enabled.
-- Android workflow compiles the settings resources, Kotlin and native code.
+Fractional factors truncate image extents like the pinned compiler. Very small or
+odd dimensions can therefore have rounding differences, including inverse integer
+image-size queries. These require game-level validation. This is not full Eden parity.
 
-The Vulkan test is host validation, not validation of PanVK or any specific game.
-Device tests have not yet been completed.
+## Verification
 
-## Device test
+- `tests/test_resolution_scaling.py`: all seven ratios, tiny/odd dimensions,
+  invalid indices, overflow, device/memory limits, constant-buffer layout and
+  settings visibility between separate translation units, under ASan/UBSan.
+- `tests/test_resolution_vulkan.py`: 14 host Vulkan cases (seven factors, even and
+  odd sizes), checking shader coordinates, descriptor bitsets, color/depth/stencil
+  readback and a subsequent native draw, with synchronization validation enabled.
+  Its GLSL test shader exercises the ABI; it does not run a translated game shader
+  or instantiate the full emulator's texture manager.
+- Android compilation, full-renderer validation, translated shader tests and
+  Mali/PanVK device measurements remain required before release.
 
-1. Keep existing app data and drivers. Record the APK commit, driver, game version,
-   docked mode and display refresh rate.
-2. Use custom settings for one game. Start at 1x and record the same scene, HUD and
-   frame times. Then restart at 0.50x, 0.75x and 2x. Test the intermediate scales next.
-3. Confirm log entries `Internal resolution scale` and `Scaled render attachment`.
-   A selected value alone does not demonstrate scaled rendering; native fallback is logged.
-4. Check menus, gameplay, scene changes, cutscenes, shadows/depth/stencil effects,
-   repeated game restarts and several minutes of play. Restore 1x and compare again.
-5. Start with Celeste, then JoJo, LEGO Jurassic World and Donkey Kong. Treat any game
-   with only native fallback as unsupported until its shader/cache paths are implemented.
-6. Compare the same scene and driver in Eden separately. Do not infer equivalence from
-   the setting label or from FPS alone. Collect logs and screenshots for discrepancies.
+## Device validation
+
+Record APK commit, driver, title/version, docked mode and display refresh rate.
+Compare the same scene at 1x, 0.50x, 0.75x, 2x, then the intermediate factors,
+restarting between settings. Capture screenshots and frame times, menus/HUD,
+post-processing, depth/stencil effects, cutscenes and several minutes of gameplay.
+Check `Internal resolution scale`, `Scaled texture cache image` and native-fallback
+log entries. A setting label alone is not evidence of scaled rendering. Restore 1x
+and verify the baseline again. Compare with Eden independently on the same device.

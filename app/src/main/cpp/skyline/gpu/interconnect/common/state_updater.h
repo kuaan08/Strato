@@ -5,6 +5,7 @@
 
 #include <future>
 #include <gpu/render_resolution.h>
+#include <gpu/resolution_shader.h>
 #include <gpu/interconnect/command_executor.h>
 #include "common.h"
 
@@ -226,6 +227,23 @@ namespace skyline::gpu::interconnect {
                     .offset = binding.offset,
                     .range = binding.size
                 };
+            }
+
+            if (updateInfo->bindPoint == vk::PipelineBindPoint::eGraphics && !gpu.resolutionScale.IsNative()) {
+                resolution::ShaderScale scale;
+                scale.downFactor = 1.0f / renderResolutionState.x;
+                for (auto &binding : updateInfo->resolutionImages) {
+                    // Array descriptors share one compiler bit. Until every array
+                    // element has a common scale, retain their native bindings.
+                    if (renderResolutionState.x != 1.0f && binding.canScale) {
+                        if (auto view{binding.view->GetScaledView()}) {
+                            binding.info->imageView = view;
+                            scale.SetTexture(binding.scalingIndex);
+                        }
+                    }
+                }
+                commandBuffer.pushConstants(updateInfo->pipelineLayout, vk::ShaderStageFlagBits::eAllGraphics,
+                    0, vk::ArrayProxy<const resolution::ShaderScale>{scale});
             }
 
             if constexpr (PushDescriptor) {

@@ -7,6 +7,7 @@
 #include <gpu/graphics_pipeline_assembler.h>
 #include <vfs/filesystem.h>
 #include "helper_shaders.h"
+#include <gpu/render_resolution.h>
 
 namespace skyline::gpu {
     static vk::raii::ShaderModule CreateShaderModule(GPU &gpu, vfs::Backing &shaderBacking) {
@@ -263,24 +264,20 @@ namespace skyline::gpu {
             dstImageDimensions
         )};
 
-        vk::DescriptorImageInfo imageInfo{
-            .imageLayout = vk::ImageLayout::eGeneral,
-            .imageView = srcImageView->GetView(),
-            .sampler = bilinearFilter ? *bilinearSampler : *nearestSampler
-        };
-
-        std::array<vk::WriteDescriptorSet, 1> writes{vk::WriteDescriptorSet{
-            .dstBinding = 0,
-            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-            .descriptorCount = 1,
-            .dstSet = *drawState->descriptorSet,
-            .pImageInfo = &imageInfo
-        }};
-
-        gpu.vkDevice.updateDescriptorSets(writes, nullptr);
-
-        recordCb([drawState = std::move(drawState)](vk::raii::CommandBuffer &commandBuffer, const std::shared_ptr<FenceCycle> &cycle, GPU &gpu, vk::RenderPass, u32) {
+        recordCb([drawState = std::move(drawState), source = srcImageView->shared_from_this(), nativeView = srcImageView->GetView(), bilinearFilter, this](vk::raii::CommandBuffer &commandBuffer, const std::shared_ptr<FenceCycle> &cycle, GPU &gpu, vk::RenderPass, u32) {
             cycle->AttachObject(drawState);
+            cycle->AttachObject(source);
+            auto view{source->GetScaledView()};
+            if (!view) view = nativeView;
+            vk::DescriptorImageInfo imageInfo{
+                .sampler = bilinearFilter ? *bilinearSampler : *nearestSampler,
+                .imageView = view, .imageLayout = vk::ImageLayout::eGeneral,
+            };
+            const vk::WriteDescriptorSet write{
+                .dstSet = *drawState->descriptorSet, .dstBinding = 0, .descriptorCount = 1,
+                .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &imageInfo,
+            };
+            gpu.vkDevice.updateDescriptorSets(write, {});
 
             vk::Viewport viewport{
                 .height = static_cast<float>(drawState->imageDimensions.height),
@@ -295,8 +292,10 @@ namespace skyline::gpu {
                 .extent = drawState->imageDimensions
             };
 
-            commandBuffer.setScissor(0, {scissor});
-            commandBuffer.setViewport(0, {viewport});
+            renderResolutionState.scissors[0] = scissor;
+            renderResolutionState.viewports[0] = viewport;
+            commandBuffer.setScissor(0, renderResolutionState.Transform(scissor));
+            commandBuffer.setViewport(0, renderResolutionState.Transform(viewport));
             commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *drawState->pipeline.pipeline.get());
             commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *drawState->pipeline.pipelineLayout, 0, *drawState->descriptorSet, nullptr);
             commandBuffer.pushConstants(*drawState->pipeline.pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0,
@@ -380,8 +379,10 @@ namespace skyline::gpu {
                 .extent = drawState->imageDimensions
             };
 
-            commandBuffer.setScissor(0, {scissor});
-            commandBuffer.setViewport(0, {viewport});
+            renderResolutionState.scissors[0] = scissor;
+            renderResolutionState.viewports[0] = viewport;
+            commandBuffer.setScissor(0, renderResolutionState.Transform(scissor));
+            commandBuffer.setViewport(0, renderResolutionState.Transform(viewport));
             commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *drawState->pipeline.pipeline.get());
             commandBuffer.pushConstants(*drawState->pipeline.pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0,
                                         vk::ArrayProxy<const clear::FragmentPushConstantLayout>{drawState->fragmentPushConstants});

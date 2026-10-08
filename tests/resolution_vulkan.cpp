@@ -7,6 +7,7 @@
 #include <vector>
 #include "gpu/resolution_blit.h"
 #include "gpu/resolution_scaling.h"
+#include "gpu/resolution_shader.h"
 #include "gpu/render_resolution_state.h"
 
 using namespace skyline::gpu;
@@ -65,7 +66,7 @@ int main(int argc, char **argv) {
         result.image = vk::raii::Image(device, vk::ImageCreateInfo{.imageType = vk::ImageType::e2D, .format = format,
             .extent = {extent.width, extent.height, 1}, .mipLevels = 1, .arrayLayers = 1,
             .samples = vk::SampleCountFlagBits::e1, .tiling = vk::ImageTiling::eOptimal,
-            .usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst |
+            .usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled |
                 (aspects & vk::ImageAspectFlagBits::eColor ? vk::ImageUsageFlagBits::eColorAttachment : vk::ImageUsageFlagBits::eDepthStencilAttachment)});
         const auto requirements{result.image.getMemoryRequirements()};
         result.memory = vk::raii::DeviceMemory(device, vk::MemoryAllocateInfo{.allocationSize = requirements.size,
@@ -81,7 +82,15 @@ int main(int argc, char **argv) {
     const std::array<vk::PipelineShaderStageCreateInfo, 2> stages{{
         {.stage = vk::ShaderStageFlagBits::eVertex, .module = *vertex, .pName = "main"},
         {.stage = vk::ShaderStageFlagBits::eFragment, .module = *fragment, .pName = "main"}}};
-    vk::raii::PipelineLayout layout(device, vk::PipelineLayoutCreateInfo{});
+    const vk::DescriptorSetLayoutBinding textureBinding{.binding = 0, .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment};
+    vk::raii::DescriptorSetLayout descriptorLayout(device, vk::DescriptorSetLayoutCreateInfo{.bindingCount = 1, .pBindings = &textureBinding});
+    const vk::DescriptorSetLayout descriptorLayoutRaw{*descriptorLayout};
+    const vk::PushConstantRange scalingRange{.stageFlags = vk::ShaderStageFlagBits::eAllGraphics, .offset = 0, .size = sizeof(resolution::ShaderScale)};
+    vk::raii::PipelineLayout layout(device, vk::PipelineLayoutCreateInfo{.setLayoutCount = 1, .pSetLayouts = &descriptorLayoutRaw,
+        .pushConstantRangeCount = 1, .pPushConstantRanges = &scalingRange});
+    vk::raii::Sampler sampler(device, vk::SamplerCreateInfo{.magFilter = vk::Filter::eNearest, .minFilter = vk::Filter::eNearest,
+        .mipmapMode = vk::SamplerMipmapMode::eNearest});
     const vk::PipelineVertexInputStateCreateInfo vertexInput{};
     const vk::PipelineInputAssemblyStateCreateInfo assembly{.topology = vk::PrimitiveTopology::eTriangleList};
     const vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .scissorCount = 1};
@@ -127,6 +136,20 @@ int main(int argc, char **argv) {
             auto originalDepth{createImage(nativeExtent, depthFormat, depthAspect)};
             auto scaledColor{createImage(scaledExtent, colorFormat, vk::ImageAspectFlagBits::eColor)};
             auto scaledDepth{createImage(scaledExtent, depthFormat, depthAspect)};
+            auto sampledNative{createImage(nativeExtent, colorFormat, vk::ImageAspectFlagBits::eColor)};
+            auto sampledScaled{createImage(scaledExtent, colorFormat, vk::ImageAspectFlagBits::eColor)};
+            const vk::DescriptorPoolSize poolSize{.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 2};
+            vk::raii::DescriptorPool descriptors(device, vk::DescriptorPoolCreateInfo{.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                .maxSets = 2, .poolSizeCount = 1, .pPoolSizes = &poolSize});
+            const std::array<vk::DescriptorSetLayout, 2> layouts{*descriptorLayout, *descriptorLayout};
+            auto sets{device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{.descriptorPool = *descriptors,
+                .descriptorSetCount = 2, .pSetLayouts = layouts.data()})};
+            const std::array<vk::DescriptorImageInfo, 2> textureInfos{{
+                {.sampler = *sampler, .imageView = *sampledScaled.view, .imageLayout = vk::ImageLayout::eGeneral},
+                {.sampler = *sampler, .imageView = *sampledNative.view, .imageLayout = vk::ImageLayout::eGeneral}}};
+            for (unsigned i{}; i < 2; i++)
+                device.updateDescriptorSets(vk::WriteDescriptorSet{.dstSet = *sets[i], .dstBinding = 0, .descriptorCount = 1,
+                    .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &textureInfos[i]}, {});
             const std::array<vk::ImageView, 2> views{*scaledColor.view, *scaledDepth.view};
             vk::raii::Framebuffer framebuffer(device, vk::FramebufferCreateInfo{.renderPass = *renderPass,
                 .attachmentCount = 2, .pAttachments = views.data(), .width = e.width, .height = e.height, .layers = 1});
@@ -141,6 +164,18 @@ int main(int argc, char **argv) {
             vk::raii::CommandBuffer command{std::move(device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{
                 .commandPool = *pool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1}).front())};
             command.begin(vk::CommandBufferBeginInfo{});
+            for (auto image : {*sampledNative.image, *sampledScaled.image}) {
+                resolution::Barrier(command, image, vk::ImageAspectFlagBits::eColor, true);
+                command.clearColorImage(image, vk::ImageLayout::eGeneral, vk::ClearColorValue{std::array<float, 4>{1, 0, 0, 1}},
+                    vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+                resolution::Barrier(command, image, vk::ImageAspectFlagBits::eColor);
+            }
+            resolution::ShaderScale shaderScale;
+            shaderScale.SetTexture(0);
+            shaderScale.SetTexture(127);
+            shaderScale.downFactor = 1.0f / scale.Factor();
+            command.pushConstants(*layout, vk::ShaderStageFlagBits::eAllGraphics, 0, vk::ArrayProxy<const resolution::ShaderScale>{shaderScale});
+            command.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *layout, 0, *sets[0], {});
             resolution::Barrier(command, *originalColor.image, vk::ImageAspectFlagBits::eColor, true);
             resolution::Barrier(command, *originalDepth.image, depthAspect, true);
             command.clearColorImage(*originalColor.image, vk::ImageLayout::eGeneral,
@@ -160,7 +195,7 @@ int main(int argc, char **argv) {
             state.scissors[0] = vk::Rect2D{{8, 8}, {nativeExtent.width - 16, nativeExtent.height - 16}};
             command.setViewport(0, *state.viewports[0]);
             command.setScissor(0, *state.scissors[0]);
-            state.Begin(command, float(e.width) / nativeExtent.width, float(e.height) / nativeExtent.height, scaledExtent);
+            state.Begin(command, scale.Factor(), scale.Factor(), scaledExtent);
             assert(state.Transform(*state.viewports[0]).height < 0);
             assert(state.Transform(*state.viewports[0]).minDepth == 0);
             command.beginRenderPass(vk::RenderPassBeginInfo{.renderPass = *renderPass, .framebuffer = *framebuffer,
@@ -178,6 +213,10 @@ int main(int argc, char **argv) {
             resolution::Barrier(command, *originalDepth.image, depthAspect);
             // Restore native dynamic state without another guest state update.
             state.Begin(command, 1, 1, nativeExtent);
+            shaderScale.textures[0] = 0;
+            shaderScale.downFactor = 1.0f;
+            command.pushConstants(*layout, vk::ShaderStageFlagBits::eAllGraphics, 0, vk::ArrayProxy<const resolution::ShaderScale>{shaderScale});
+            command.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *layout, 0, *sets[1], {});
             assert(state.Transform(*state.viewports[0]) == *state.viewports[0]);
             assert(state.Transform(*state.scissors[0]) == *state.scissors[0]);
             const vk::BufferImageCopy colorCopy{.imageSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
@@ -224,6 +263,7 @@ int main(int argc, char **argv) {
                 const size_t p{size_t(y) * nativeExtent.width + x};
                 assert(data[block + p * 4] == (red ? 255 : 0));
                 assert(data[block + p * 4 + 2] == (red ? 0 : 255));
+                if (red) assert(std::abs(int(data[block + p * 4 + 1]) - int(x)) <= 2);
                 float depth; std::memcpy(&depth, data + block + pixels * 4 + p * 4, 4);
                 assert(depth == (red ? 0.25f : 1.0f));
                 assert(data[block + pixels * 8 + p] == (red ? 7 : 0));
@@ -233,7 +273,7 @@ int main(int argc, char **argv) {
             }
             memory.unmapMemory();
             std::cout << "PASS: " << scale.Factor() << "x " << nativeExtent.width << 'x' << nativeExtent.height
-                << " -> " << e.width << 'x' << e.height << "; color/depth/stencil/readback/native restore\n";
+                << " -> " << e.width << 'x' << e.height << "; shader coordinates/descriptor bits/color/depth/stencil/readback/native restore\n";
         }
     }
     device.waitIdle();

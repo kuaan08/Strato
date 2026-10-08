@@ -7,6 +7,8 @@
 #include <common/trace.h>
 #include <common/settings.h>
 #include "texture.h"
+#include <gpu/render_resolution.h>
+#include <gpu/resolution_blit.h>
 #include "layout.h"
 #include "adreno_aliasing.h"
 #include "bc_decoder.h"
@@ -100,6 +102,87 @@ namespace skyline::gpu {
         }
 
         return vkView = *it->vkView;
+    }
+
+    vk::ImageView TextureView::GetScaledView() {
+        if (!texture->HasScaledContent() || type != vk::ImageViewType::e2D ||
+            range.baseMipLevel || range.levelCount != 1 || range.baseArrayLayer || range.layerCount != 1 ||
+            format != texture->format)
+            return {};
+        auto &target{*texture->scaledRenderTarget};
+        const vk::ImageViewCreateInfo info{
+            .image = target.image.vkImage, .viewType = type, .format = *format,
+            .components = mapping, .subresourceRange = range,
+        };
+        for (const auto &view : target.sampledViews)
+            if (view.first == info) return *view.second;
+        try {
+            target.sampledViews.emplace_back(info, texture->gpu.vkDevice.createImageView(info));
+            return *target.sampledViews.back().second;
+        } catch (const vk::SystemError &error) {
+            const auto result{static_cast<vk::Result>(error.code().value())};
+            if (result != vk::Result::eErrorOutOfDeviceMemory && result != vk::Result::eErrorOutOfHostMemory &&
+                result != vk::Result::eErrorFormatNotSupported) throw;
+            LOGW("Scaled sampling view unavailable: {}", error.what());
+        } catch (const std::bad_alloc &) {
+        }
+        texture->gpu.resolutionAllocationFailed = true;
+        return {};
+    }
+
+    bool Texture::HasScaledContent() const {
+        return scaledRenderTarget && scaledRenderTarget->initialized &&
+            scaledRenderTarget->nativeVersion == nativeWriteVersion.load(std::memory_order_relaxed);
+    }
+
+    bool Texture::EnsureScaledImage() {
+        if (gpu.resolutionScale.IsNative() || gpu.resolutionAllocationFailed ||
+            dimensions.depth != 1 || layerCount != 1 || sampleCount != vk::SampleCountFlagBits::e1 ||
+            layout != vk::ImageLayout::eGeneral)
+            return false;
+        if (scaledRenderTarget) return true;
+        const auto limits{gpu.vkPhysicalDevice.getProperties().limits};
+        const auto extent{gpu.resolutionScale.TryExtent({dimensions.width, dimensions.height},
+            {std::min(limits.maxImageDimension2D, std::min(limits.maxFramebufferWidth, limits.maxViewportDimensions[0])),
+             std::min(limits.maxImageDimension2D, std::min(limits.maxFramebufferHeight, limits.maxViewportDimensions[1]))})};
+        const auto features{gpu.vkPhysicalDevice.getFormatProperties(format->vkFormat).optimalTilingFeatures};
+        const auto required{vk::FormatFeatureFlagBits::eBlitSrc | vk::FormatFeatureFlagBits::eBlitDst | vk::FormatFeatureFlagBits::eSampledImage};
+        if (!extent || (features & required) != required) return false;
+        try {
+            const auto bytes{format->GetSize((extent->width + 127u) & ~127u,
+                (extent->height + 63u) & ~63u) + 256u * 1024u};
+            auto reservation{std::make_shared<resolution::Reservation>(gpu.resolutionAllocatedBytes, bytes)};
+            if (!reservation->reserved) return false;
+            const auto scaledUsage{vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst |
+                vk::ImageUsageFlagBits::eSampled |
+                (format->vkAspect & vk::ImageAspectFlagBits::eColor ? vk::ImageUsageFlagBits::eColorAttachment : vk::ImageUsageFlagBits::eDepthStencilAttachment)};
+            auto image{gpu.memory.AllocateImage(vk::ImageCreateInfo{
+                .imageType = vk::ImageType::e2D, .format = format->vkFormat,
+                .extent = {extent->width, extent->height, 1}, .mipLevels = 1, .arrayLayers = 1,
+                .samples = vk::SampleCountFlagBits::e1, .tiling = vk::ImageTiling::eOptimal,
+                .usage = scaledUsage, .sharingMode = vk::SharingMode::eExclusive,
+                .initialLayout = vk::ImageLayout::eUndefined,
+            })};
+            auto view{gpu.vkDevice.createImageView(vk::ImageViewCreateInfo{
+                .image = image.vkImage, .viewType = vk::ImageViewType::e2D,
+                .format = format->vkFormat, .subresourceRange = {format->vkAspect, 0, 1, 0, 1},
+            })};
+            scaledRenderTarget = std::make_shared<ScaledRenderTarget>(std::move(reservation), std::move(image),
+                std::move(view), vk::Extent2D{extent->width, extent->height});
+            if (++gpu.resolutionAttachmentCount <= 8)
+                LOGI("Scaled texture cache image: {}x{} -> {}x{} ({})", dimensions.width, dimensions.height,
+                    extent->width, extent->height, vk::to_string(format->vkFormat));
+            return true;
+        } catch (const vk::SystemError &error) {
+            const auto result{static_cast<vk::Result>(error.code().value())};
+            if (result != vk::Result::eErrorOutOfDeviceMemory && result != vk::Result::eErrorOutOfHostMemory &&
+                result != vk::Result::eErrorFormatNotSupported) throw;
+            LOGW("Resolution image allocation unavailable: {}", error.what());
+            gpu.resolutionAllocationFailed = true;
+        } catch (const std::bad_alloc &) {
+            gpu.resolutionAllocationFailed = true;
+        }
+        return false;
     }
 
     void TextureView::lock() {
@@ -691,6 +774,7 @@ namespace skyline::gpu {
     void Texture::SwapBacking(BackingType &&pBacking, vk::ImageLayout pLayout) {
         WaitOnFence();
 
+        InvalidateScaledContent();
         backing = std::move(pBacking);
         layout = pLayout;
         if (GetBacking())
@@ -758,6 +842,10 @@ namespace skyline::gpu {
 
         // From this point on Clean -> CPU dirty state transitions can occur, GPU dirty -> * transitions will always require the full lock to be held and thus won't occur
 
+        if (!gpu.resolutionScale.IsNative()) {
+            if (cycle) cycle->WaitSubmit();
+            InvalidateScaledContent();
+        }
         auto stagingBuffer{SynchronizeHostImpl()};
         if (stagingBuffer) {
             if (cycle)
@@ -802,6 +890,10 @@ namespace skyline::gpu {
             gpu.state.process->trap.TrapRegions(*trapHandle, !gpuDirty); // Trap any future CPU reads (optionally) + writes to this texture
         }
 
+        if (!gpu.resolutionScale.IsNative()) {
+            if (cycle) cycle->WaitSubmit();
+            InvalidateScaledContent();
+        }
         auto stagingBuffer{SynchronizeHostImpl()};
         if (stagingBuffer) {
             CopyFromStagingBuffer(commandBuffer, stagingBuffer);
@@ -911,6 +1003,19 @@ namespace skyline::gpu {
             throw exception("Cannot copy from image with different dimensions");
 
         TRACE_EVENT("gpu", "Texture::CopyFrom");
+        InvalidateScaledContent();
+        // Preserve detail through same-format cache copies and final presentation.
+        // Subresource/format reinterpretation retains the coherent native path.
+        const bool scaledSource{subresource.aspectMask == vk::ImageAspectFlagBits::eColor && source.get() != this && source->HasScaledContent() && source->format == format &&
+            subresource.baseMipLevel == 0 && subresource.levelCount == 1 &&
+            subresource.baseArrayLayer == 0 && subresource.layerCount == 1 &&
+            source->dimensions.depth == 1 && dimensions.depth == 1 &&
+            bool(gpu.vkPhysicalDevice.getFormatProperties(format->vkFormat).optimalTilingFeatures & vk::FormatFeatureFlagBits::eBlitDst)};
+        const auto sourceTarget{scaledSource ? source->scaledRenderTarget : nullptr};
+        const auto sourceLayout{scaledSource ? vk::ImageLayout::eGeneral : source->layout};
+        const auto copyFilter{bool(gpu.vkPhysicalDevice.getFormatProperties(format->vkFormat).optimalTilingFeatures &
+            vk::FormatFeatureFlagBits::eSampledImageFilterLinear) && subresource.aspectMask == vk::ImageAspectFlagBits::eColor ?
+            vk::Filter::eLinear : vk::Filter::eNearest};
 
         auto submitFunc{[&](vk::Semaphore extraWaitSemaphore){
             boost::container::small_vector<vk::Semaphore, 2> waitSemaphores;
@@ -921,13 +1026,13 @@ namespace skyline::gpu {
                 waitSemaphores.push_back(extraWaitSemaphore);
 
             return gpu.scheduler.Submit([&](vk::raii::CommandBuffer &commandBuffer) {
-                auto sourceBacking{source->GetBacking()};
-                if (source->layout != vk::ImageLayout::eTransferSrcOptimal) {
+                auto sourceBacking{scaledSource ? sourceTarget->image.vkImage : source->GetBacking()};
+                if (sourceLayout != vk::ImageLayout::eTransferSrcOptimal) {
                     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, vk::ImageMemoryBarrier{
                         .image = sourceBacking,
                         .srcAccessMask = vk::AccessFlagBits::eMemoryWrite,
                         .dstAccessMask = vk::AccessFlagBits::eTransferRead,
-                        .oldLayout = source->layout,
+                        .oldLayout = sourceLayout,
                         .newLayout = vk::ImageLayout::eTransferSrcOptimal,
                         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -959,13 +1064,13 @@ namespace skyline::gpu {
                     .layerCount = subresource.layerCount == VK_REMAINING_ARRAY_LAYERS ? layerCount - subresource.baseArrayLayer : subresource.layerCount,
                     };
                 for (; subresourceLayers.mipLevel < (subresource.levelCount == VK_REMAINING_MIP_LEVELS ? levelCount - subresource.baseMipLevel : subresource.levelCount); subresourceLayers.mipLevel++) {
-                    if (srcFormat != format) {
+                    if (srcFormat != format || scaledSource) {
                         commandBuffer.blitImage(sourceBacking, vk::ImageLayout::eTransferSrcOptimal, destinationBacking, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{
                                 .srcSubresource = subresourceLayers,
                                 .srcOffsets = std::array<vk::Offset3D, 2>{
                                     vk::Offset3D{0, 0, 0},
-                                    vk::Offset3D{static_cast<i32>(dimensions.width),
-                                                 static_cast<i32>(dimensions.height),
+                                    vk::Offset3D{static_cast<i32>(scaledSource ? sourceTarget->extent.width : dimensions.width),
+                                                 static_cast<i32>(scaledSource ? sourceTarget->extent.height : dimensions.height),
                                                  static_cast<i32>(subresourceLayers.layerCount)}
                                 },
                                 .dstSubresource = subresourceLayers,
@@ -975,7 +1080,7 @@ namespace skyline::gpu {
                                                  static_cast<i32>(dimensions.height),
                                                  static_cast<i32>(subresourceLayers.layerCount)}
                                 }
-                            }, vk::Filter::eLinear);
+                            }, scaledSource ? copyFilter : vk::Filter::eLinear);
                     } else {
                         commandBuffer.copyImage(sourceBacking, vk::ImageLayout::eTransferSrcOptimal, destinationBacking, vk::ImageLayout::eTransferDstOptimal, vk::ImageCopy{
                             .srcSubresource = subresourceLayers,
@@ -983,6 +1088,22 @@ namespace skyline::gpu {
                             .extent = dimensions,
                         });
                     }
+                }
+
+                if (scaledSource && guest && EnsureScaledImage()) {
+                    auto &target{*scaledRenderTarget};
+                    resolution::Barrier(commandBuffer, target.image.vkImage, format->vkAspect, !target.initialized);
+                    target.initialized = true;
+                    const vk::ImageSubresourceLayers layers{vk::ImageAspectFlagBits::eColor, 0, 0, 1};
+                    commandBuffer.blitImage(sourceBacking, vk::ImageLayout::eTransferSrcOptimal,
+                        target.image.vkImage, vk::ImageLayout::eGeneral, vk::ImageBlit{
+                            .srcSubresource = layers,
+                            .srcOffsets = std::array<vk::Offset3D, 2>{{{0, 0, 0}, {i32(sourceTarget->extent.width), i32(sourceTarget->extent.height), 1}}},
+                            .dstSubresource = layers,
+                            .dstOffsets = std::array<vk::Offset3D, 2>{{{0, 0, 0}, {i32(target.extent.width), i32(target.extent.height), 1}}},
+                        }, copyFilter);
+                    resolution::Barrier(commandBuffer, target.image.vkImage, format->vkAspect);
+                    target.nativeVersion = nativeWriteVersion.load(std::memory_order_relaxed);
                 }
 
                 if (layout != vk::ImageLayout::eTransferDstOptimal)
@@ -997,13 +1118,13 @@ namespace skyline::gpu {
                         .subresourceRange = subresource,
                         });
 
-                if (source->layout != vk::ImageLayout::eTransferSrcOptimal)
+                if (sourceLayout != vk::ImageLayout::eTransferSrcOptimal)
                     commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eAllCommands, {}, {}, {}, vk::ImageMemoryBarrier{
                         .image = sourceBacking,
                         .srcAccessMask = vk::AccessFlagBits::eTransferRead,
                         .dstAccessMask = vk::AccessFlagBits::eMemoryWrite,
                         .oldLayout = vk::ImageLayout::eTransferSrcOptimal,
-                        .newLayout = source->layout,
+                        .newLayout = sourceLayout,
                         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                         .subresourceRange = subresource,
@@ -1017,6 +1138,8 @@ namespace skyline::gpu {
             else
                 return submitFunc({});
         }()};
+        if (sourceTarget) newCycle->AttachObject(sourceTarget);
+        if (scaledRenderTarget) newCycle->AttachObject(scaledRenderTarget);
         newCycle->AttachObjects(std::move(source), shared_from_this());
         cycle = newCycle;
     }

@@ -16,6 +16,8 @@ namespace skyline::soc::gm20b {
     struct ChannelContext;
 }
 
+namespace skyline::gpu { class TextureView; }
+
 namespace skyline::gpu::interconnect {
     class CommandExecutor;
 }
@@ -88,6 +90,13 @@ namespace skyline::gpu::interconnect {
 
     class StateUpdateBuilder;
 
+    struct ResolutionImageBinding {
+        vk::DescriptorImageInfo *info;
+        TextureView *view;
+        u32 scalingIndex;
+        bool canScale;
+    };
+
     struct DescriptorUpdateInfo {
         span<vk::CopyDescriptorSet> copies; //!< These will be performed before writes
         span<vk::WriteDescriptorSet> writes;
@@ -97,5 +106,6 @@ namespace skyline::gpu::interconnect {
         vk::DescriptorSetLayout descriptorSetLayout;
         vk::PipelineBindPoint bindPoint;
         u32 descriptorSetIndex;
+        span<ResolutionImageBinding> resolutionImages{};
     };
 }

@@ -226,7 +226,7 @@ namespace skyline::gpu::interconnect::node {
         if (count == 1) {
             constexpr std::array<const char *, 5> reasons{
                 "native: shader, helper or attachment feedback",
-                "native: unsupported attachment or partial render area",
+                "native: unsupported attachment view or out-of-bounds render area",
                 "native: device extent or blit support limit",
                 "native: optional allocation unavailable",
                 "scaled graphics pass"};
@@ -245,97 +245,29 @@ namespace skyline::gpu::interconnect::node {
             ReportResolutionPass(gpu, 1);
             return false;
         }
-        const auto limits{gpu.vkPhysicalDevice.getProperties().limits};
         for (size_t i{}; i < attachmentViews.size(); i++) {
-            const auto view{attachmentViews[i]};
-            const auto &texture{*view->texture};
+            const auto &view{attachmentViews[i]};
+            auto &texture{*view->texture};
             const auto dimensions{texture.dimensions};
-            // Until shader coordinate compensation and mixed attachment sizes
-            // are implemented, only complete, ordinary 2D surfaces are eligible.
             if (view->type != vk::ImageViewType::e2D || view->range.baseMipLevel ||
                 view->range.levelCount != 1 || view->range.baseArrayLayer || view->range.layerCount != 1 ||
-                dimensions.depth != 1 || texture.layerCount != 1 || texture.sampleCount != vk::SampleCountFlagBits::e1 ||
                 view->format != texture.format || view->range.aspectMask != texture.format->vkAspect ||
-                texture.layout != vk::ImageLayout::eGeneral || renderArea.offset != vk::Offset2D{} ||
-                renderArea.extent != vk::Extent2D{dimensions.width, dimensions.height}) {
+                renderArea.offset.x < 0 || renderArea.offset.y < 0 ||
+                u64(renderArea.offset.x) + renderArea.extent.width > dimensions.width ||
+                u64(renderArea.offset.y) + renderArea.extent.height > dimensions.height) {
                 ReportResolutionPass(gpu, 1);
                 return false;
             }
-            for (size_t j{}; j < i; j++) {
-                if (attachmentViews[j]->texture == view->texture) {
-                    ReportResolutionPass(gpu, 1);
-                    return false;
-                }
-            }
-            const auto extent{gpu.resolutionScale.TryExtent({dimensions.width, dimensions.height},
-                {std::min(limits.maxImageDimension2D, std::min(limits.maxFramebufferWidth, limits.maxViewportDimensions[0])),
-                 std::min(limits.maxImageDimension2D, std::min(limits.maxFramebufferHeight, limits.maxViewportDimensions[1]))})};
-            const auto features{gpu.vkPhysicalDevice.getFormatProperties(texture.format->vkFormat).optimalTilingFeatures};
-            const auto required{vk::FormatFeatureFlagBits::eBlitSrc | vk::FormatFeatureFlagBits::eBlitDst};
-            if (!extent || (features & required) != required) {
-                ReportResolutionPass(gpu, 2);
+            for (size_t j{}; j < i; j++)
+                if (attachmentViews[j]->texture == view->texture) return false;
+        }
+        for (const auto &view : attachmentViews) {
+            if (!view->texture->EnsureScaledImage()) {
+                scaledTargets.clear();
+                ReportResolutionPass(gpu, gpu.resolutionAllocationFailed ? 3 : 2);
                 return false;
             }
-        }
-        try {
-            for (auto view : attachmentViews) {
-                auto &texture{*view->texture};
-                const auto extent{*gpu.resolutionScale.TryExtent({texture.dimensions.width, texture.dimensions.height},
-                    {limits.maxImageDimension2D, limits.maxImageDimension2D})};
-                const vk::Extent2D scaledExtent{extent.width, extent.height};
-                if (!texture.scaledRenderTarget) {
-                    // Reserve a conservative padded estimate before optional allocation.
-                    const auto bytes{texture.format->GetSize((extent.width + 127u) & ~127u,
-                        (extent.height + 63u) & ~63u) + 256u * 1024u};
-                    auto reservation{std::make_shared<resolution::Reservation>(gpu.resolutionAllocatedBytes, bytes)};
-                    if (!reservation->reserved) {
-                        scaledTargets.clear();
-                        ReportResolutionPass(gpu, 3);
-                        return false;
-                    }
-                    const auto usage{vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst |
-                        (view->range.aspectMask & vk::ImageAspectFlagBits::eColor ? vk::ImageUsageFlagBits::eColorAttachment : vk::ImageUsageFlagBits::eDepthStencilAttachment)};
-                    auto image{gpu.memory.AllocateImage(vk::ImageCreateInfo{
-                        .imageType = vk::ImageType::e2D,
-                        .format = texture.format->vkFormat,
-                        .extent = {extent.width, extent.height, 1},
-                        .mipLevels = 1,
-                        .arrayLayers = 1,
-                        .samples = vk::SampleCountFlagBits::e1,
-                        .tiling = vk::ImageTiling::eOptimal,
-                        .usage = usage,
-                        .sharingMode = vk::SharingMode::eExclusive,
-                        .initialLayout = vk::ImageLayout::eUndefined,
-                    })};
-                    auto imageView{gpu.vkDevice.createImageView(vk::ImageViewCreateInfo{
-                        .image = image.vkImage,
-                        .viewType = vk::ImageViewType::e2D,
-                        .format = texture.format->vkFormat,
-                        .subresourceRange = view->range,
-                    })};
-                    texture.scaledRenderTarget = std::make_shared<ScaledRenderTarget>(std::move(reservation), std::move(image), std::move(imageView), scaledExtent);
-                    if (++gpu.resolutionAttachmentCount <= 8) LOGI("Scaled render attachment: {}x{} -> {}x{} ({})", texture.dimensions.width, texture.dimensions.height,
-                        extent.width, extent.height, vk::to_string(texture.format->vkFormat));
-                }
-                scaledTargets.push_back(texture.scaledRenderTarget);
-            }
-        } catch (const vk::SystemError &error) {
-            const auto result{static_cast<vk::Result>(error.code().value())};
-            if (result != vk::Result::eErrorOutOfDeviceMemory && result != vk::Result::eErrorOutOfHostMemory &&
-                result != vk::Result::eErrorFormatNotSupported)
-                throw; // Device loss and unrelated errors must never be disguised.
-            gpu.resolutionAllocationFailed = true;
-            LOGW("Resolution scaling disabled for this session: {}", error.what());
-            scaledTargets.clear();
-            for (auto view : attachmentViews) view->texture->scaledRenderTarget.reset();
-            ReportResolutionPass(gpu, 3);
-            return false;
-        } catch (const std::bad_alloc &) {
-            gpu.resolutionAllocationFailed = true;
-            scaledTargets.clear();
-            for (auto view : attachmentViews) view->texture->scaledRenderTarget.reset();
-            ReportResolutionPass(gpu, 3);
-            return false;
+            scaledTargets.push_back(view->texture->scaledRenderTarget);
         }
         return true;
     }
@@ -356,6 +288,7 @@ namespace skyline::gpu::interconnect::node {
             resolution::Blit(commandBuffer, target->image.vkImage, target->extent,
                 view->texture->GetBacking(), nativeExtent, view->range.aspectMask, ResolutionFilter(view, gpu));
             resolution::Barrier(commandBuffer, view->texture->GetBacking(), view->range.aspectMask);
+            target->nativeVersion = view->texture->nativeWriteVersion.load(std::memory_order_relaxed);
         }
     }
 
@@ -392,9 +325,21 @@ namespace skyline::gpu::interconnect::node {
             .pDependencies = subpassDependencies.data(),
         })};
 
+        for (const auto &view : sampledViews) {
+            if (view->texture->HasScaledContent()) {
+                const auto &target{view->texture->scaledRenderTarget};
+                cycle->AttachObject(target);
+                resolution::Barrier(commandBuffer, target->image.vkImage, view->texture->format->vkAspect);
+            }
+        }
+
         const bool scaled{PrepareResolution(gpu)};
         if (scaled) {
-            const auto extent{scaledTargets.front()->extent};
+            auto extent{scaledTargets.front()->extent};
+            for (const auto &target : scaledTargets) {
+                extent.width = std::min(extent.width, target->extent.width);
+                extent.height = std::min(extent.height, target->extent.height);
+            }
             std::vector<vk::ImageView> scaledViews;
             for (const auto &target : scaledTargets) scaledViews.push_back(*target->view);
             // Do not put transient views in the global framebuffer cache. Both
@@ -429,19 +374,24 @@ namespace skyline::gpu::interconnect::node {
                     const auto &target{scaledTargets[i]};
                     cycle->AttachObject(target);
                     cycle->AttachObject(view);
-                    resolution::Barrier(commandBuffer, view->texture->GetBacking(), view->range.aspectMask);
-                    resolution::Barrier(commandBuffer, target->image.vkImage, view->range.aspectMask, !target->initialized);
-                    target->initialized = true;
-                    resolution::Blit(commandBuffer, view->texture->GetBacking(), renderArea.extent,
-                        target->image.vkImage, extent, view->range.aspectMask, ResolutionFilter(view, gpu));
+                    if (!view->texture->HasScaledContent()) {
+                        resolution::Barrier(commandBuffer, view->texture->GetBacking(), view->range.aspectMask);
+                        resolution::Barrier(commandBuffer, target->image.vkImage, view->range.aspectMask, !target->initialized);
+                        target->initialized = true;
+                        resolution::Blit(commandBuffer, view->texture->GetBacking(),
+                            vk::Extent2D{view->texture->dimensions.width, view->texture->dimensions.height},
+                            target->image.vkImage, target->extent, view->range.aspectMask, ResolutionFilter(view, gpu));
+                    }
                     resolution::Barrier(commandBuffer, target->image.vkImage, view->range.aspectMask);
                 }
-                renderResolutionState.Begin(commandBuffer, float(extent.width) / renderArea.extent.width,
-                    float(extent.height) / renderArea.extent.height, extent);
+                // The compiler uses the selected rational factor, not a ratio
+                // recomputed from truncated odd-sized images.
+                renderResolutionState.Begin(commandBuffer, gpu.resolutionScale.Factor(),
+                    gpu.resolutionScale.Factor(), extent);
                 commandBuffer.beginRenderPass(vk::RenderPassBeginInfo{
                     .renderPass = renderPass,
                     .framebuffer = **framebuffer,
-                    .renderArea = {{0, 0}, extent},
+                    .renderArea = renderResolutionState.Transform(renderArea),
                     .clearValueCount = static_cast<u32>(clearValues.size()),
                     .pClearValues = clearValues.data(),
                 }, vk::SubpassContents::eInline);
@@ -449,6 +399,7 @@ namespace skyline::gpu::interconnect::node {
                 return renderPass;
             }
         }
+        for (const auto &view : attachmentViews) view->texture->InvalidateScaledContent();
         renderResolutionState.Begin(commandBuffer, 1.0f, 1.0f, renderArea.extent);
         auto useImagelessFramebuffer{gpu.traits.supportsImagelessFramebuffers};
         cache::FramebufferCreateInfo framebufferCreateInfo{
