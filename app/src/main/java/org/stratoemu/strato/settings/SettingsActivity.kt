@@ -75,7 +75,6 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         setSupportActionBar(binding.titlebar.toolbar)
         if (!intent.hasExtra(AppItemTag)) {
             supportActionBar?.title = getString(R.string.settings_hub_title)
-            binding.versionText.text = getString(R.string.settings_version_label, BuildConfig.RELEASE_VERSION)
             val sections = listOf("graphics", "gpu", "folders", "drivers", "general")
             val titles = listOf(R.string.settings_tab_graphics, R.string.settings_tab_gpu,
                 R.string.settings_tab_folders, R.string.settings_tab_drivers, R.string.settings_tab_general)

@@ -19,9 +19,6 @@
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:text="Strato Mali" android:textColor="@color/settings_on_container"
                         android:textAppearance="?attr/textAppearanceTitleLarge" android:textStyle="bold" />
-                    <TextView android:id="@+id/version_text" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:layout_marginTop="4dp"
-                        android:textColor="@color/settings_on_container" android:textAppearance="?attr/textAppearanceBodyLarge" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
             <com.google.android.material.tabs.TabLayout android:id="@+id/settings_tabs"
