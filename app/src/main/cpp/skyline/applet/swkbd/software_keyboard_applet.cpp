@@ -66,8 +66,11 @@ namespace skyline::applet::swkbd {
         auto commonArgs{normalInputData.front()->GetSpan().as<service::applet::CommonArguments>()};
         normalInputData.pop();
 
-        auto configSpan{normalInputData.front()->GetSpan()};
+        // The span does not own its bytes. Keep the storage alive after removing
+        // it from the queue until configuration parsing has completed.
+        auto configStorage{normalInputData.front()};
         normalInputData.pop();
+        auto configSpan{configStorage->GetSpan()};
         config = [&] {
             if (commonArgs.apiVersion < 0x30007)
                 return KeyboardConfigVB{configSpan.as<KeyboardConfigV0>()};
