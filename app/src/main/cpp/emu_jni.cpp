@@ -14,6 +14,7 @@
 #include "skyline/vfs/android_asset_filesystem.h"
 #include "skyline/os.h"
 #include "skyline/jvm.h"
+#include "skyline/applet/swkbd/software_keyboard_applet.h"
 #include "skyline/gpu.h"
 #include "skyline/audio.h"
 #include "skyline/input.h"
@@ -242,4 +243,17 @@ extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_settings_NativeSetti
     if (!settings)
         return; // We don't mind if we miss settings updates while settings haven't been initialized
     settings->Update();
+}
+
+// Keep the OS (and its scheduler/events) alive while delivering Android input.
+extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_applet_swkbd_SoftwareKeyboardDialog_submitInlineInput(
+    JNIEnv *env, jobject, jlong token, jint type, jstring value, jint cursor, jlong revision) {
+    auto os{OsWeak.lock()};
+    if (!os || !value) return;
+    const auto length{std::min<jsize>(env->GetStringLength(value), 500)};
+    std::u16string text(static_cast<std::size_t>(length), u'\0');
+    env->GetStringRegion(value, 0, length, reinterpret_cast<jchar *>(text.data()));
+    if (env->ExceptionCheck()) return;
+    skyline::applet::swkbd::SoftwareKeyboardApplet::SubmitInlineInput(
+        static_cast<skyline::u64>(token), static_cast<skyline::u32>(type), std::move(text), cursor, static_cast<skyline::u64>(revision));
 }

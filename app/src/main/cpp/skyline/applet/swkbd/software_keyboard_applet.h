@@ -7,6 +7,7 @@
 #include <services/applet/common_arguments.h>
 #include <jvm.h>
 #include "software_keyboard_config.h"
+#include "inline_keyboard.h"
 
 namespace skyline::applet::swkbd {
     static_assert(sizeof(KeyboardConfigVB) == sizeof(JvmManager::KeyboardConfig));
@@ -83,8 +84,20 @@ namespace skyline::applet::swkbd {
 
         void SendResult();
 
+        bool inlineStarted{};
+        std::mutex inlineMutex;
+        InlineKeyboard inlineKeyboard;
+        u64 inlineToken{};
+        void ApplyInlineUpdate(InlineKeyboard::Update update);
+        void CloseInlineDialog();
+
       public:
         SoftwareKeyboardApplet(const DeviceState &state, service::ServiceManager &manager, std::shared_ptr<kernel::type::KEvent> onAppletStateChanged, std::shared_ptr<kernel::type::KEvent> onNormalDataPushFromApplet, std::shared_ptr<kernel::type::KEvent> onInteractiveDataPushFromApplet, service::applet::LibraryAppletMode appletMode);
+
+        ~SoftwareKeyboardApplet() override;
+
+        // Opaque session IDs prevent delayed Android callbacks from touching an old applet.
+        static void SubmitInlineInput(u64 token, u32 type, std::u16string text, i32 cursor, u64 revision);
 
         Result Start() override;
 

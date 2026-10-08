@@ -168,6 +168,8 @@ namespace skyline {
          * @brief A call to EmulationActivity.showKeyboard in Kotlin
          */
         KeyboardHandle ShowKeyboard(KeyboardConfig &config, std::u16string initialText);
+        KeyboardHandle ShowInlineKeyboard(KeyboardConfig &config, const std::u16string &text, u64 token, i32 cursor, u64 revision);
+        void UpdateInlineKeyboard(KeyboardHandle dialog, const std::u16string &text, i32 cursor, u64 revision);
 
         /**
          * @brief A call to EmulationActivity.waitForSubmitOrCancel in Kotlin
@@ -221,6 +223,8 @@ namespace skyline {
         jmethodID clearVibrationDeviceId;
 
         jmethodID showKeyboardId;
+        jmethodID showInlineKeyboardId;
+        jmethodID updateInlineKeyboardId;
         jmethodID waitForSubmitOrCancelId;
         jmethodID closeKeyboardId;
         jmethodID showValidationResultId;

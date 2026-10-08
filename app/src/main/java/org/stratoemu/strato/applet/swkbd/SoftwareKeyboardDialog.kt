@@ -16,16 +16,38 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import androidx.annotation.Keep
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.DialogFragment
 import org.stratoemu.strato.databinding.KeyboardDialogBinding
 import org.stratoemu.strato.utils.parcelable
 import org.stratoemu.strato.utils.stringFromChars
 
+@Keep
 class SoftwareKeyboardDialog : DialogFragment() {
     private val config by lazy { requireArguments().parcelable<SoftwareKeyboardConfig>("config")!! }
     private val initialText by lazy { requireArguments().getString("initialText")!! }
     private val session = SoftwareKeyboardSession()
+    private val inlineToken by lazy { requireArguments().getLong("inlineToken") }
+    private var inlineRevision = 0L
+    private var inlineFinished = false
+    private var suppressInlineEvents = false
+    private var lastInlineText = ""
+    private var lastInlineCursor = 0
+    private val sendInlineUpdate = Runnable {
+        if (inlineToken != 0L && !inlineFinished && !suppressInlineEvents && isAdded) {
+            val text = binding.textInput.text.toString()
+            val cursor = binding.textInput.selectionEnd.coerceAtLeast(0)
+            val changed = text != lastInlineText
+            if (changed || cursor != lastInlineCursor) {
+                lastInlineText = text
+                lastInlineCursor = cursor
+                submitInlineInput(inlineToken, if (changed) 2 else 3, text, cursor, inlineRevision)
+            }
+        }
+    }
+
+    private external fun submitInlineInput(token : Long, type : Int, text : String, cursor : Int, revision : Long)
 
     companion object {
         /**
@@ -41,6 +63,13 @@ class SoftwareKeyboardDialog : DialogFragment() {
             return fragment
         }
 
+        fun newInlineInstance(config : SoftwareKeyboardConfig, initialText : String, token : Long, cursor : Int, revision : Long) =
+            newInstance(config, initialText).apply {
+                requireArguments().putLong("inlineToken", token)
+                requireArguments().putInt("inlineCursor", cursor)
+                requireArguments().putLong("inlineRevision", revision)
+            }
+
         const val validationConfirm = 2
         const val validationError = 1
     }
@@ -50,6 +79,7 @@ class SoftwareKeyboardDialog : DialogFragment() {
     override fun onCreate(savedInstanceState : Bundle?) {
         super.onCreate(savedInstanceState)
         isCancelable = !config.isCancelButtonDisabled
+        inlineRevision = requireArguments().getLong("inlineRevision")
     }
 
     override fun onCreateView(inflater : LayoutInflater, container : ViewGroup?, savedInstanceState : Bundle?) =
@@ -90,7 +120,13 @@ class SoftwareKeyboardDialog : DialogFragment() {
         binding.textInput.doOnTextChanged { text, _, _, _ ->
             binding.okButton.isEnabled = config.isValid(text!!)
             binding.lengthStatus.text = "${text.length}/${config.textMaxLength}"
+            queueInlineUpdate()
         }
+        binding.textInput.selectionChanged = ::queueInlineUpdate
+        if (inlineToken != 0L)
+            binding.textInput.setSelection(requireArguments().getInt("inlineCursor").coerceIn(0, binding.textInput.length()))
+        lastInlineText = binding.textInput.text.toString()
+        lastInlineCursor = binding.textInput.selectionEnd.coerceAtLeast(0)
         binding.lengthStatus.text = "${binding.textInput.length()}/${config.textMaxLength}"
         binding.okButton.isEnabled = config.isValid(binding.textInput.text.toString())
         binding.okButton.setOnClickListener { submit(false) }
@@ -110,6 +146,15 @@ class SoftwareKeyboardDialog : DialogFragment() {
     private fun submit(cancelled : Boolean) {
         val text = binding.textInput.text.toString()
         if (!cancelled && !config.isValid(text)) return
+        if (inlineToken != 0L) {
+            if (inlineFinished) return
+            binding.textInput.removeCallbacks(sendInlineUpdate)
+            inlineFinished = true
+            // Final packets include the full text; never rely on a queued change event.
+            submitInlineInput(inlineToken, if (cancelled) 6 else 5, text,
+                binding.textInput.selectionEnd.coerceAtLeast(0), inlineRevision)
+            return
+        }
         if (session.submit(SoftwareKeyboardResult(cancelled, text))) {
             binding.okButton.isEnabled = false
             binding.cancelButton.isEnabled = false
@@ -117,6 +162,36 @@ class SoftwareKeyboardDialog : DialogFragment() {
             (requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
                 .hideSoftInputFromWindow(binding.textInput.windowToken, 0)
         }
+    }
+
+    private fun queueInlineUpdate() {
+        if (inlineToken == 0L || suppressInlineEvents || inlineFinished) return
+        binding.textInput.removeCallbacks(sendInlineUpdate)
+        binding.textInput.post(sendInlineUpdate)
+    }
+
+    fun updateFromGuest(text : String, cursor : Int, revision : Long) {
+        // Native updates may be posted before showNow has created the view.
+        requireArguments().putString("initialText", text)
+        requireArguments().putInt("inlineCursor", cursor)
+        requireArguments().putLong("inlineRevision", revision)
+        inlineRevision = revision
+        inlineFinished = false
+        if (!::binding.isInitialized) return
+        binding.textInput.removeCallbacks(sendInlineUpdate)
+        suppressInlineEvents = true
+        binding.textInput.setText(text)
+        binding.textInput.setSelection(cursor.coerceIn(0, binding.textInput.length()))
+        lastInlineText = binding.textInput.text.toString()
+        lastInlineCursor = binding.textInput.selectionEnd.coerceAtLeast(0)
+        suppressInlineEvents = false
+    }
+
+    /** Native hide/finalize must not turn into a user cancel callback. */
+    fun finishFromGuest() {
+        inlineFinished = true
+        if (::binding.isInitialized) binding.textInput.removeCallbacks(sendInlineUpdate)
+        session.close()
     }
 
     private fun showIme() {
@@ -149,16 +224,23 @@ class SoftwareKeyboardDialog : DialogFragment() {
     }
 
     override fun onCancel(dialog : DialogInterface) {
-        session.close()
+        cancelForShutdown()
         super.onCancel(dialog)
     }
 
     override fun onDestroy() {
-        session.close()
+        cancelForShutdown()
         super.onDestroy()
     }
 
-    fun cancelForShutdown() = session.close()
+    fun cancelForShutdown() {
+        session.close()
+        if (inlineToken != 0L && !inlineFinished) {
+            inlineFinished = true
+            if (::binding.isInitialized) binding.textInput.removeCallbacks(sendInlineUpdate)
+            submitInlineInput(inlineToken, 6, "", 0, inlineRevision)
+        }
+    }
 
     fun waitForSubmitOrCancel() : SoftwareKeyboardResult = session.awaitResult()
 }

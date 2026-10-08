@@ -40,7 +40,9 @@ namespace skyline::service::am {
             return {};
         std::shared_ptr<IStorage> data(interactiveOutputData.front());
         interactiveOutputData.pop();
-        onInteractiveDataPushFromApplet->ResetSignal();
+        // A single inline request can enqueue several replies. Keep the event
+        // signalled until the guest drains the entire queue.
+        if (interactiveOutputData.empty()) onInteractiveDataPushFromApplet->ResetSignal();
         return data;
     }
 

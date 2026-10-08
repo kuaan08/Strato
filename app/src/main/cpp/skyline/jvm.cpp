@@ -60,6 +60,8 @@ namespace skyline {
           vibrateDeviceId{environ->GetMethodID(instanceClass, "vibrateDevice", "(I[J[I)V")},
           clearVibrationDeviceId{environ->GetMethodID(instanceClass, "clearVibrationDevice", "(I)V")},
           showKeyboardId{environ->GetMethodID(instanceClass, "showKeyboard", "(Ljava/nio/ByteBuffer;Ljava/lang/String;)Lorg/stratoemu/strato/applet/swkbd/SoftwareKeyboardDialog;")},
+          showInlineKeyboardId{environ->GetMethodID(instanceClass, "showInlineKeyboard", "(Ljava/nio/ByteBuffer;Ljava/lang/String;JIJ)Lorg/stratoemu/strato/applet/swkbd/SoftwareKeyboardDialog;")},
+          updateInlineKeyboardId{environ->GetMethodID(instanceClass, "updateInlineKeyboard", "(Lorg/stratoemu/strato/applet/swkbd/SoftwareKeyboardDialog;Ljava/lang/String;IJ)V")},
           waitForSubmitOrCancelId{environ->GetMethodID(instanceClass, "waitForSubmitOrCancel", "(Lorg/stratoemu/strato/applet/swkbd/SoftwareKeyboardDialog;)[Ljava/lang/Object;")},
           closeKeyboardId{environ->GetMethodID(instanceClass, "closeKeyboard", "(Lorg/stratoemu/strato/applet/swkbd/SoftwareKeyboardDialog;)V")},
           showValidationResultId{environ->GetMethodID(instanceClass, "showValidationResult", "(Lorg/stratoemu/strato/applet/swkbd/SoftwareKeyboardDialog;ILjava/lang/String;)I")},
@@ -124,6 +126,24 @@ namespace skyline {
 
         env->DeleteLocalRef(localKeyboardDialog);
         return keyboardDialog;
+    }
+
+    jobject JvmManager::ShowInlineKeyboard(KeyboardConfig &config, const std::u16string &text, u64 token, i32 cursor, u64 revision) {
+        auto buffer{env->NewDirectByteBuffer(&config, sizeof(KeyboardConfig))};
+        auto string{env->NewString(reinterpret_cast<const jchar *>(text.data()), static_cast<jsize>(text.size()))};
+        auto local{env->CallObjectMethod(instance, showInlineKeyboardId, buffer, string, static_cast<jlong>(token),
+            static_cast<jint>(cursor), static_cast<jlong>(revision))};
+        auto result{env->NewGlobalRef(local)};
+        env->DeleteLocalRef(local);
+        env->DeleteLocalRef(string);
+        env->DeleteLocalRef(buffer);
+        return result;
+    }
+
+    void JvmManager::UpdateInlineKeyboard(jobject dialog, const std::u16string &text, i32 cursor, u64 revision) {
+        auto string{env->NewString(reinterpret_cast<const jchar *>(text.data()), static_cast<jsize>(text.size()))};
+        env->CallVoidMethod(instance, updateInlineKeyboardId, dialog, string, static_cast<jint>(cursor), static_cast<jlong>(revision));
+        env->DeleteLocalRef(string);
     }
 
     std::pair<JvmManager::KeyboardCloseResult, std::u16string> JvmManager::WaitForSubmitOrCancel(jobject keyboardDialog) {

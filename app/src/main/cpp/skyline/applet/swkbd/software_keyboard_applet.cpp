@@ -4,11 +4,20 @@
 
 #include "software_keyboard_text.h"
 #include <services/am/storage/ObjIStorage.h>
+#include <services/am/storage/VectorIStorage.h>
+#include <unordered_map>
+#include <atomic>
 #include <common/settings.h>
 #include "software_keyboard_applet.h"
 #include <jvm.h>
 
 namespace skyline::applet::swkbd {
+    namespace {
+        std::mutex inlineRegistryMutex;
+        std::unordered_map<u64, std::weak_ptr<SoftwareKeyboardApplet>> inlineRegistry;
+        std::atomic<u64> nextInlineToken{1};
+    }
+
     static void WriteStringToSpan(span<u8> chars, std::u16string_view text, bool useUtf8Storage) {
         EncodeKeyboardText(chars.data(), chars.size(), text, useUtf8Storage);
     }
@@ -57,8 +66,13 @@ namespace skyline::applet::swkbd {
 
     Result SoftwareKeyboardApplet::Start() {
         if (mode != service::applet::LibraryAppletMode::AllForeground) {
-            LOGW("Stubbing out InlineKeyboard!");
-            SendResult();
+            std::scoped_lock lock{inlineMutex, normalInputDataMutex};
+            if (inlineStarted) return {};
+            inlineStarted = true;
+            // Inline initialization is completed by Calc, not by a foreground
+            // OutputResult. Signalling completion here makes games relaunch forever.
+            while (!normalInputData.empty()) normalInputData.pop();
+            LOGI("Swkbd inline session started (mode={})", static_cast<u32>(mode));
             return {};
         }
 
@@ -140,6 +154,15 @@ namespace skyline::applet::swkbd {
     }
 
     void SoftwareKeyboardApplet::PushInteractiveDataToApplet(std::shared_ptr<service::am::IStorage> data) {
+        if (mode != service::applet::LibraryAppletMode::AllForeground) {
+            std::scoped_lock lock{inlineMutex};
+            if (!inlineStarted) return;
+            const auto bytes{data->GetSpan()};
+            auto update{inlineKeyboard.Request(bytes.data(), bytes.size())};
+            if (!update.valid) LOGW("Swkbd rejected malformed or unsupported inline request (size={})", bytes.size());
+            ApplyInlineUpdate(std::move(update));
+            return;
+        }
         if (validationPending) {
             auto dataSpan{data->GetSpan()};
             auto validationResult{dataSpan.as<ValidationResult>()};
@@ -176,4 +199,75 @@ namespace skyline::applet::swkbd {
             }
         }
     }
+    SoftwareKeyboardApplet::~SoftwareKeyboardApplet() {
+        if (inlineToken) CloseInlineDialog();
+    }
+
+    void SoftwareKeyboardApplet::CloseInlineDialog() {
+        {
+            std::scoped_lock registryLock{inlineRegistryMutex};
+            inlineRegistry.erase(inlineToken);
+        }
+        inlineToken = 0;
+        if (dialog) {
+            state.jvm->CloseKeyboard(dialog);
+            dialog = nullptr;
+        }
+    }
+
+    void SoftwareKeyboardApplet::ApplyInlineUpdate(InlineKeyboard::Update update) {
+        for (auto &reply : update.replies)
+            PushInteractiveDataAndSignal(std::make_shared<service::am::VectorIStorage>(state, manager, std::move(reply)));
+        switch (update.action) {
+            case InlineKeyboard::Action::Show: {
+                CloseInlineDialog();
+                config = KeyboardConfigVB{};
+                const auto &appear{inlineKeyboard.appearance};
+                config.commonConfig.keyboardMode = static_cast<KeyboardMode>(appear.mode);
+                config.commonConfig.okText = appear.okText;
+                config.commonConfig.leftOptionalSymbolKey = appear.leftSymbol;
+                config.commonConfig.rightOptionalSymbolKey = appear.rightSymbol;
+                config.commonConfig.isPredictionEnabled = appear.prediction;
+                config.commonConfig.invalidCharFlags.raw = appear.invalidChars;
+                config.commonConfig.textMaxLength = appear.maxLength;
+                config.commonConfig.textMinLength = appear.minLength;
+                config.commonConfig.isUseNewLine = appear.newline;
+                config.isCancelButtonDisabled = appear.disableCancel;
+                inlineToken = nextInlineToken.fetch_add(1);
+                {
+                    std::scoped_lock registryLock{inlineRegistryMutex};
+                    inlineRegistry[inlineToken] = std::static_pointer_cast<SoftwareKeyboardApplet>(shared_from_this());
+                }
+                LOGI("Swkbd inline keyboard requested (maxLength={})", appear.maxLength);
+                dialog = state.jvm->ShowInlineKeyboard(*reinterpret_cast<JvmManager::KeyboardConfig *>(&config),
+                    inlineKeyboard.text, inlineToken, inlineKeyboard.cursor, inlineKeyboard.revision);
+                break;
+            }
+            case InlineKeyboard::Action::Update:
+                if (dialog) state.jvm->UpdateInlineKeyboard(dialog, inlineKeyboard.text, inlineKeyboard.cursor, inlineKeyboard.revision);
+                break;
+            case InlineKeyboard::Action::Hide:
+                CloseInlineDialog();
+                break;
+            case InlineKeyboard::Action::Finish:
+                CloseInlineDialog();
+                onAppletStateChanged->Signal();
+                break;
+            default: break;
+        }
+    }
+
+    void SoftwareKeyboardApplet::SubmitInlineInput(u64 token, u32 type, std::u16string text, i32 cursor, u64 revision) {
+        std::shared_ptr<SoftwareKeyboardApplet> applet;
+        {
+            std::scoped_lock registryLock{inlineRegistryMutex};
+            const auto entry{inlineRegistry.find(token)};
+            if (entry != inlineRegistry.end()) applet = entry->second.lock();
+        }
+        if (!applet) return;
+        std::scoped_lock lock{applet->inlineMutex};
+        if (token != applet->inlineToken) return;
+        applet->ApplyInlineUpdate(applet->inlineKeyboard.Input(type, std::move(text), cursor, revision));
+    }
+
 }

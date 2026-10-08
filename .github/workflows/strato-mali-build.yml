@@ -69,7 +69,9 @@ jobs:
           python3 tests/test_resolution_vulkan.py
 
       - name: Test software keyboard text encoding
-        run: python3 tests/test_keyboard_text.py
+        run: |
+          python3 tests/test_keyboard_text.py
+          python3 tests/test_inline_keyboard.py
 
       - name: Install Java 17
         uses: actions/setup-java@v4

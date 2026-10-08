@@ -28,6 +28,7 @@ import android.util.Rational
 import android.util.TypedValue
 import android.view.*
 import android.widget.Toast
+import androidx.annotation.Keep
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.getSystemService
@@ -824,20 +825,48 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
         val config = ByteBufferSerializable.createFromByteBuffer(SoftwareKeyboardConfig::class, buffer) as SoftwareKeyboardConfig
 
         val dialog = SoftwareKeyboardDialog.newInstance(config, initialText)
-        runOnUiThread {
-            if (isFinishing || isDestroyed || supportFragmentManager.isStateSaved) {
-                dialog.cancelForShutdown()
-            } else {
-                // A real DialogFragment owns Back and hardware keyboard input while the
-                // guest waits. Do not put this on the activity's fragment back stack.
-                closeEmulationMenu()
-                releaseGameInput()
-                keyboardDialog = dialog
-                pictureInPictureParamsBuilder = getPictureInPictureBuilder()
-                dialog.showNow(supportFragmentManager, "software_keyboard")
-            }
-        }
+        presentKeyboard(dialog)
         return dialog
+    }
+
+    @Keep
+    fun showInlineKeyboard(buffer : ByteBuffer, initialText : String, token : Long, cursor : Int, revision : Long) : SoftwareKeyboardDialog {
+        buffer.order(ByteOrder.LITTLE_ENDIAN)
+        val config = ByteBufferSerializable.createFromByteBuffer(SoftwareKeyboardConfig::class, buffer) as SoftwareKeyboardConfig
+        val dialog = SoftwareKeyboardDialog.newInlineInstance(config, initialText, token, cursor, revision)
+        presentKeyboard(dialog)
+        return dialog
+    }
+
+    @Keep
+    fun updateInlineKeyboard(dialog : SoftwareKeyboardDialog, text : String, cursor : Int, revision : Long) {
+        runOnUiThread {
+            if (keyboardDialog === dialog) dialog.updateFromGuest(text, cursor, revision)
+        }
+    }
+
+    private fun presentKeyboard(dialog : SoftwareKeyboardDialog) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) {
+                dialog.cancelForShutdown()
+                return@runOnUiThread
+            }
+            closeEmulationMenu()
+            releaseGameInput()
+            keyboardDialog = dialog
+            pictureInPictureParamsBuilder = getPictureInPictureBuilder()
+            if (!supportFragmentManager.isStateSaved && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                dialog.showNow(supportFragmentManager, "software_keyboard")
+            // Otherwise onPostResume presents it when the activity can accept a dialog.
+        }
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        keyboardDialog?.let {
+            if (!it.isAdded && !supportFragmentManager.isStateSaved)
+                it.showNow(supportFragmentManager, "software_keyboard")
+        }
     }
 
     @Suppress("unused")
@@ -855,6 +884,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     fun closeKeyboard(dialog : SoftwareKeyboardDialog) {
         runOnUiThread {
             if (keyboardDialog === dialog) keyboardDialog = null
+            dialog.finishFromGuest()
             if (dialog.isAdded) dialog.dismissAllowingStateLoss() else dialog.cancelForShutdown()
             if (!isDestroyed) pictureInPictureParamsBuilder = getPictureInPictureBuilder()
         }
