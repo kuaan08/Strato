@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <sys/mman.h>
 
-namespace skyline::kernel::memory {
+namespace skyline::kernel::memoryReclaim {
     // MADV_REMOVE needs VM_WRITE even for shared backing we originally allocated
     // writable. A trap or guest permission change may have made this VMA read-only.
     // Use a temporary writable alias instead of weakening the live guest mapping.

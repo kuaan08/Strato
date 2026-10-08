@@ -24,7 +24,10 @@ static int OldKernelMadvise(void *address, size_t size, int advice) {
 #include <sstream>
 #include <string>
 #include <unistd.h>
-using skyline::kernel::memory::ReclaimSharedPages;
+// A nested kernel::memory would shadow skyline::memory in production headers.
+namespace skyline::memory { struct NamespaceLookupProbe {}; }
+namespace skyline::kernel { using MemoryLookupProbe = memory::NamespaceLookupProbe; }
+using skyline::kernel::memoryReclaim::ReclaimSharedPages;
 std::string permissions(void* address) {
     std::ifstream maps("/proc/self/maps"); std::string line;
     while(std::getline(maps,line)) {

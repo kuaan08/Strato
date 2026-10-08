@@ -614,7 +614,7 @@ namespace skyline::kernel {
         u8 *alignedEnd{util::AlignDown(memory.end().base(), constant::PageSize)};
 
         if (alignedStart < alignedEnd) [[likely]]
-            if (const int error{memory::ReclaimSharedPages(alignedStart, static_cast<size_t>(alignedEnd - alignedStart))}; error) [[unlikely]]
+            if (const int error{memoryReclaim::ReclaimSharedPages(alignedStart, static_cast<size_t>(alignedEnd - alignedStart))}; error) [[unlikely]]
                 LOGE("Failed to free memory: {}", strerror(error));
     }
 
