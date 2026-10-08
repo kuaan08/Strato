@@ -5,6 +5,7 @@
 #include <asm-generic/unistd.h>
 #include <fcntl.h>
 #include "memory.h"
+#include "memory_reclaim.h"
 #include "types/KProcess.h"
 
 namespace skyline::kernel {
@@ -613,8 +614,8 @@ namespace skyline::kernel {
         u8 *alignedEnd{util::AlignDown(memory.end().base(), constant::PageSize)};
 
         if (alignedStart < alignedEnd) [[likely]]
-            if (madvise(alignedStart, static_cast<size_t>(alignedEnd - alignedStart), MADV_REMOVE) == -1) [[unlikely]]
-                LOGE("Failed to free memory: {}", strerror(errno));
+            if (const int error{memory::ReclaimSharedPages(alignedStart, static_cast<size_t>(alignedEnd - alignedStart))}; error) [[unlikely]]
+                LOGE("Failed to free memory: {}", strerror(error));
     }
 
     bool MemoryManager::SvcMapMemory(span<u8> source, span<u8> destination) {

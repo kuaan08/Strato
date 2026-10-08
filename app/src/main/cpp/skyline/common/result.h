@@ -14,7 +14,7 @@ namespace skyline {
         u32 raw{};
         struct __attribute__((packed)) {
             u16 module : 9;
-            u16 id : 12;
+            u16 id : 13;
         };
 
         /**
@@ -22,7 +22,7 @@ namespace skyline {
          */
         constexpr Result() = default;
 
-        constexpr Result(u16 module, u16 id) : module{module}, id{id} {}
+        constexpr Result(u16 module, u16 id) : raw{(static_cast<u32>(module) & 0x1FFU) | ((static_cast<u32>(id) & 0x1FFFU) << 9)} {}
 
         constexpr explicit Result(u32 raw) : raw{raw} {}
 
@@ -30,6 +30,8 @@ namespace skyline {
             return raw;
         }
     };
+
+    static_assert(sizeof(Result) == sizeof(u32));
 
     /**
      * @brief A wrapper around std::optional that also stores a HOS result code

@@ -528,10 +528,11 @@ namespace skyline::gpu::interconnect::maxwell3d {
                                        .inputRate = binding.GetInputRate(),
                                    });
 
-            if (binding.GetInputRate() == vk::VertexInputRate::eInstance) {
+            // Divisor 1 is core Vulkan behavior and needs no extension state.
+            if (binding.GetInputRate() == vk::VertexInputRate::eInstance && binding.divisor != 1) {
                 if (!gpu.traits.supportsVertexAttributeDivisor)
                     [[unlikely]]
-                        LOGW("Vertex attribute divisor used on guest without host support");
+                        LOGW("Vertex attribute divisor {} on binding {} used without host support", binding.divisor, i);
                 else if (!gpu.traits.supportsVertexAttributeZeroDivisor && binding.divisor == 0)
                     [[unlikely]]
                         LOGW("Vertex attribute zero divisor used on guest without host support");

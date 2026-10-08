@@ -36,6 +36,11 @@ jobs:
           python3 tests/test_storage_read.py
           python3 tests/test_partition_bounds.py
 
+      - name: Test shared memory reclamation and HOS results
+        run: |
+          python3 tests/test_memory_reclaim.py
+          python3 tests/test_result_codes.py
+
       - name: Test Horizon GetInfo process queries (ASan/UBSan)
         run: python3 tests/test_get_info.py
 
