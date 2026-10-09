@@ -60,6 +60,8 @@ class StorageImageBindingTests(unittest.TestCase):
         self.assertIn("pendingStorageWriteStages", texture)
         draws = source("interconnect/maxwell_3d/maxwell_3d.cpp")
         self.assertEqual(draws.count("HasWritableStorageImages()"), 2)
+        self.assertEqual(draws.count("const bool hasStorageWrites{activeState.GetPipeline()->HasWritableStorageImages()}"), 2)
+        self.assertEqual(draws.count("if (hasStorageWrites)"), 2)
         self.assertIn("ctx.executor.AddFullBarrier()", draws)
 
 

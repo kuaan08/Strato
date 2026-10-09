@@ -339,6 +339,9 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
 
         constantBuffers.ResetQuickBind();
+        // AddSubpass may submit command buffers and invalidate the cached
+        // active pipeline. Capture this before handing work to the executor.
+        const bool hasStorageWrites{activeState.GetPipeline()->HasWritableStorageImages()};
         ctx.executor.AddCheckpoint("Before draw");
         ctx.executor.AddSubpass([drawParams](vk::raii::CommandBuffer &commandBuffer, const std::shared_ptr<FenceCycle> &, GPU &gpu, vk::RenderPass, u32) {
             drawParams->stateUpdater.RecordAll(gpu, commandBuffer);
@@ -355,9 +358,9 @@ namespace skyline::gpu::interconnect::maxwell3d {
                 commandBuffer.endTransformFeedbackEXT(0, {}, {});
         }, scissor, activeDescriptorSetSampledImages, {}, activeState.GetColorAttachments(), activeState.GetDepthAttachment(), !ctx.gpu.traits.quirks.relaxedRenderPassCompatibility, srcStageMask, dstStageMask, activeState.GetPipeline()->supportsResolutionScaling && !transformFeedbackEnable);
         ctx.executor.AddCheckpoint("After draw");
-        // A storage write inside a render pass must be visible to the next
-        // pass/dispatch. End this pass and emit a memory barrier only when needed.
-        if (activeState.GetPipeline()->HasWritableStorageImages())
+        // The decision was captured before AddSubpass/Submit could clear the
+        // active pipeline. Never read the pipeline again after submission.
+        if (hasStorageWrites)
             ctx.executor.AddFullBarrier();
     }
 
@@ -404,6 +407,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
         auto scissor{GetDrawScissor()};
         constantBuffers.ResetQuickBind();
+        const bool hasStorageWrites{activeState.GetPipeline()->HasWritableStorageImages()};
 
         ctx.executor.AddCheckpoint("Before indirect draw");
         ctx.executor.AddSubpass([drawParams](vk::raii::CommandBuffer &commandBuffer, const std::shared_ptr<FenceCycle> &, GPU &gpu, vk::RenderPass, u32) {
@@ -422,7 +426,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
                 commandBuffer.endTransformFeedbackEXT(0, {}, {});
         }, scissor, activeDescriptorSetSampledImages, {}, activeState.GetColorAttachments(), activeState.GetDepthAttachment(), !ctx.gpu.traits.quirks.relaxedRenderPassCompatibility, srcStageMask, dstStageMask, activeState.GetPipeline()->supportsResolutionScaling && !transformFeedbackEnable);
         ctx.executor.AddCheckpoint("After indirect draw");
-        if (activeState.GetPipeline()->HasWritableStorageImages())
+        if (hasStorageWrites)
             ctx.executor.AddFullBarrier();
     }
 
