@@ -16,6 +16,8 @@ import android.widget.ImageView
 import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.viewbinding.ViewBinding
+import androidx.core.content.ContextCompat
+import com.google.android.material.card.MaterialCardView
 import org.stratoemu.strato.R
 import org.stratoemu.strato.data.AppItem
 import org.stratoemu.strato.databinding.AppItemGridBinding
@@ -88,7 +90,7 @@ class GridCompatBinding(parent : ViewGroup) : LayoutBinding<AppItemGridCompactBi
 
 private typealias InteractionFunction = (appItem : AppItem) -> Unit
 
-class AppViewItem(var layoutType : LayoutType, private val item : AppItem, private val onClick : InteractionFunction, private val onLongClick : InteractionFunction) : GenericListItem<LayoutBinding<*>>() {
+class AppViewItem(var layoutType : LayoutType, private val item : AppItem, private val onClick : InteractionFunction, private val onLongClick : InteractionFunction, private val isSelected : (AppItem) -> Boolean) : GenericListItem<LayoutBinding<*>>() {
     override fun getViewBindingFactory() = LayoutBindingFactory(layoutType)
 
     override fun bind(holder : GenericViewHolder<LayoutBinding<*>>, position : Int) {
@@ -102,6 +104,17 @@ class AppViewItem(var layoutType : LayoutType, private val item : AppItem, priva
         binding.textAuthor.isSelected = true
 
         binding.icon.setImageBitmap(item.bitmapIcon)
+        binding.icon.contentDescription = item.title
+        if (layoutType != LayoutType.List) {
+            binding.icon.scaleType = ImageView.ScaleType.CENTER_CROP
+            val card = binding.root.findViewById<MaterialCardView>(R.id.item_card)
+                ?: (binding.root as? MaterialCardView)
+            card?.apply {
+                strokeWidth = if (isSelected(item)) (3f * resources.displayMetrics.density).toInt() else 0
+                strokeColor = ContextCompat.getColor(context, R.color.mali_cyan)
+                cardElevation = if (isSelected(item)) 7f * resources.displayMetrics.density else 1f * resources.displayMetrics.density
+            }
+        }
 
         if (layoutType == LayoutType.List) {
             binding.icon.setOnClickListener { showIconDialog(it.context, item) }

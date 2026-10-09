@@ -64,16 +64,8 @@ class MainActivity : AppCompatActivity() {
         AlphabeticalDesc
     }
 
-    private var refreshIconVisible = false
-        set(visible) {
-            field = visible
-            binding.refreshIcon.apply {
-                if (visible != isVisible) {
-                    binding.refreshIcon.alpha = if (visible) 0f else 1f
-                    animate().alpha(if (visible) 1f else 0f).withStartAction { isVisible = true }.withEndAction { isInvisible = !visible }.apply { duration = 500 }.start()
-                }
-            }
-        }
+    private var selectedGame: AppItem? = null
+    private var selectedGameKey: String? = null
 
     private val documentPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) {
         it?.let { uri ->
@@ -112,7 +104,7 @@ class MainActivity : AppCompatActivity() {
         if (appSettings.refreshRequired) loadRoms(false)
     }
 
-    private fun AppItem.toViewItem() = AppViewItem(layoutType, this, ::selectStartGame, ::selectShowGameDialog)
+    private fun AppItem.toViewItem() = AppViewItem(layoutType, this, ::selectGame, ::selectShowGameDialog) { selectedGameKey == it.key() }
 
     override fun onCreate(savedInstanceState : Bundle?) {
         // Need to create new instance of settings, dependency injection happens
@@ -129,14 +121,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsHelper.applyToActivity(binding.root, binding.appList)
+        WindowInsetsHelper.addMargin(binding.libraryDock, consume = false, bottom = true)
 
         PreferenceManager.setDefaultValues(this, R.xml.app_preferences, false)
         PreferenceManager.setDefaultValues(this, R.xml.emulation_preferences, false)
 
-        binding.subText.text = BuildConfig.VERSION_NAME
-        // The first click event is consumed by the focus acquisition
-        // Subsequent clicks should be interpreted as a request to clear focus
-        binding.subText.setOnClickListener { if (it.isFocused) binding.subText.clearFocus() }
+        // The library design intentionally does not show the app version.
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
 
         binding.appList.setHasFixedSize(true)
 
@@ -172,15 +164,25 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             binding.settingsIcon.setOnClickListener { settingsCallback.launch(Intent(context, SettingsActivity::class.java)) }
-            binding.refreshIcon.setOnClickListener { loadRoms(false) }
+            binding.searchIcon.setOnClickListener { toggleSearch() }
             addTextChangedListener(afterTextChanged = { editable ->
                 editable?.let { text -> adapter.filter.filter(text.toString()) }
             })
         }
 
-        window.decorView.findViewById<View>(android.R.id.content).viewTreeObserver.addOnTouchModeChangeListener { isInTouchMode ->
-            refreshIconVisible = !isInTouchMode
+        binding.playButton.setOnClickListener { selectedGame?.let(::launchGame) }
+        binding.detailsButton.setOnClickListener { selectedGame?.let(::selectShowGameDialog) }
+
+        binding.navGames.setOnClickListener {
+            if (binding.searchBar.isVisible) toggleSearch()
+            binding.searchBar.text = ""
+            binding.appBarLayout.setExpanded(true)
+            binding.appList.smoothScrollToPosition(0)
         }
+        binding.navLibrary.setOnClickListener { toggleSearch() }
+        // Game details already contain the DLC/Update installation action.
+        binding.navInstall.setOnClickListener { selectedGame?.let(::selectShowGameDialog) }
+        binding.navAdd.setOnClickListener { documentPicker.launch(null) }
     }
 
     private fun setAppListDecoration() {
@@ -265,7 +267,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleState(state : MainState) = when (state) {
         MainState.Loading -> {
-            binding.refreshIcon.apply { animate().rotation(rotation - 180f) }
+            // Pull-to-refresh remains available; the top only has Search and Settings.
             binding.swipeRefreshLayout.isRefreshing = true
         }
 
@@ -279,17 +281,52 @@ class MainActivity : AppCompatActivity() {
         is MainState.Error -> Snackbar.make(findViewById(android.R.id.content), getString(R.string.error) + ": ${state.ex.localizedMessage}", Snackbar.LENGTH_SHORT).show()
     }
 
-    private fun selectStartGame(appItem : AppItem) {
+    private fun selectGame(appItem : AppItem) {
         if (binding.swipeRefreshLayout.isRefreshing) return
-
-        if (appSettings.selectAction) {
-            AppDialog.newInstance(appItem).show(supportFragmentManager, "game")
-        } else if (appItem.loaderResult == LoaderResult.Success) {
-            startActivity(Intent(this, EmulationActivity::class.java).apply {
-                putExtra(AppItemTag, appItem)
-                putExtra(EmulationActivity.ReturnToMainTag, true)
-            })
+        if (selectedGameKey == appItem.key()) {
+            if (appSettings.selectAction) selectShowGameDialog(appItem) else launchGame(appItem)
+        } else {
+            updateSelectedGame(appItem)
         }
+    }
+
+    private fun updateSelectedGame(appItem : AppItem?, refreshGrid : Boolean = true) {
+        selectedGame = appItem
+        selectedGameKey = appItem?.key()
+        binding.featuredPanel.isVisible = appItem != null
+        binding.featuredTitle.text = appItem?.title.orEmpty()
+        val playable = appItem?.loaderResult == LoaderResult.Success
+        binding.featuredStatus.text = if (playable) getString(R.string.mali_ready)
+            else appItem?.loaderResultString(this).orEmpty()
+        binding.playButton.isEnabled = playable
+        binding.detailsButton.isEnabled = appItem != null
+        binding.navInstall.isEnabled = appItem != null
+        if (refreshGrid && adapter.itemCount > 0) {
+            adapter.notifyItemRangeChanged(0, adapter.itemCount)
+        }
+    }
+
+    private fun toggleSearch() {
+        val show = !binding.searchBar.isVisible
+        binding.searchBar.isVisible = show
+        onBackPressedCallback.isEnabled = show
+        if (show) {
+            binding.appBarLayout.setExpanded(true)
+            binding.searchBar.focusSearch()
+        } else {
+            binding.searchBar.text = ""
+            binding.searchBar.clearFocus()
+            val keyboard = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            keyboard.hideSoftInputFromWindow(binding.searchBar.windowToken, 0)
+        }
+    }
+
+    private fun launchGame(appItem : AppItem) {
+        if (binding.swipeRefreshLayout.isRefreshing || appItem.loaderResult != LoaderResult.Success) return
+        startActivity(Intent(this, EmulationActivity::class.java).apply {
+            putExtra(AppItemTag, appItem)
+            putExtra(EmulationActivity.ReturnToMainTag, true)
+        })
     }
 
     private fun selectShowGameDialog(appItem : AppItem) {
@@ -312,24 +349,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun populateAdapter() {
+        val games = appEntries?.let(::sortGameList).orEmpty()
+        val selectedEntry = games.firstOrNull { AppItem(it).key() == selectedGameKey } ?: games.firstOrNull()
+        updateSelectedGame(selectedEntry?.let { AppItem(it) }, refreshGrid = false)
+
         val items = getAppItems()
+        binding.romPlaceholder.isVisible = items.isEmpty()
         if (items.isEmpty())
             binding.romPlaceholder.text = getString(R.string.no_rom)
-        else
-            binding.romPlaceholder.isVisible = false
         adapter.setItems(items)
     }
 
     private val onBackPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
-            binding.searchBar.apply {
-                val inputMethodManager = context.getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-                if (!inputMethodManager.hideSoftInputFromWindow(windowToken, 0)) {
-                    text = ""
-                    clearFocus()
-                }
+            if (binding.searchBar.isVisible) {
+                toggleSearch()
+            } else {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
             }
-            isEnabled = binding.searchBar.hasFocus() || binding.searchBar.text.isNotEmpty()
         }
     }
 

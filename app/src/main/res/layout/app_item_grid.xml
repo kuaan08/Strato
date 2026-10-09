@@ -14,8 +14,10 @@
         style="@style/Widget.Material3.CardView.Elevated"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="10dp"
-        app:shapeAppearance="?attr/shapeAppearanceCornerLarge">
+        android:layout_margin="5dp"
+        app:cardBackgroundColor="@color/mali_card"
+        app:cardCornerRadius="20dp"
+        app:strokeColor="@color/mali_cyan">
 
         <ImageView
             android:id="@+id/icon"
@@ -23,6 +25,7 @@
             android:layout_height="wrap_content"
             android:adjustViewBounds="true"
             android:contentDescription="@string/icon"
+            android:scaleType="centerCrop"
             tools:src="@drawable/default_icon" />
     </com.google.android.material.card.MaterialCardView>
 
@@ -33,9 +36,9 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="10dp"
         android:layout_marginEnd="10dp"
-        android:ellipsize="marquee"
-        android:marqueeRepeatLimit="marquee_forever"
+        android:ellipsize="end"
         android:singleLine="true"
+        android:textColor="@color/mali_text"
         tools:text="Title" />
 
     <TextView
@@ -48,6 +51,7 @@
         android:ellipsize="marquee"
         android:marqueeRepeatLimit="marquee_forever"
         android:singleLine="true"
+        android:visibility="gone"
         tools:text="Version" />
 
     <TextView
@@ -61,5 +65,6 @@
         android:ellipsize="marquee"
         android:marqueeRepeatLimit="marquee_forever"
         android:singleLine="true"
+        android:visibility="gone"
         tools:text="Author" />
 </LinearLayout>

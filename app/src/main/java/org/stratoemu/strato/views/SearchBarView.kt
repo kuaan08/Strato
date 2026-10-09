@@ -5,6 +5,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.util.AttributeSet
 import android.view.LayoutInflater
+import android.view.inputmethod.InputMethodManager
 import com.google.android.material.card.MaterialCardView
 import org.stratoemu.strato.databinding.ViewSearchBarBinding
 
@@ -14,6 +15,14 @@ class SearchBarView @JvmOverloads constructor(context : Context, attrs : Attribu
     var text : CharSequence
         get() = binding.searchField.text
         set(value) = binding.searchField.setText(value)
+
+    fun focusSearch() {
+        binding.searchField.requestFocus()
+        binding.searchField.post {
+            val keyboard = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            keyboard.showSoftInput(binding.searchField, InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
 
     fun addTextChangedListener(
         beforeTextChanged : (
