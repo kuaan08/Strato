@@ -116,4 +116,54 @@ namespace skyline::gpu::interconnect {
             texture
         };
     }
+    // Unlike sampled textures, storage images are descriptor-bound without a
+    // sampler, must use an identity swizzle and require VK_IMAGE_USAGE_STORAGE.
+    // The caller supplies the shader stage so both graphics and compute can
+    // insert a read-after-write barrier before execution.
+    static vk::DescriptorImageInfo GetStorageImageBinding(InterconnectContext &ctx, const auto &desc,
+                                                           Textures &textures, BindlessHandle handle,
+                                                           vk::PipelineStageFlagBits dstStage,
+                                                           vk::PipelineStageFlags &srcStageMask,
+                                                           vk::PipelineStageFlags &dstStageMask) {
+        auto *guestView{textures.GetTexture(ctx, handle.textureIndex, desc.type)};
+        const auto requestedFormat{StorageImageViewFormat(desc.format)};
+        const auto &guestTexture{guestView->texture};
+
+        const bool storageUsage{bool(guestTexture->usage & vk::ImageUsageFlagBits::eStorage)};
+        const bool formatCompatible{!requestedFormat ||
+            (guestTexture->format->IsCompatible(*requestedFormat) &&
+             (guestTexture->format == requestedFormat ||
+              bool(guestTexture->flags & vk::ImageCreateFlagBits::eMutableFormat)) &&
+             bool(ctx.gpu.vkPhysicalDevice.getFormatProperties(requestedFormat->vkFormat).optimalTilingFeatures &
+                  vk::FormatFeatureFlagBits::eStorageImage))};
+
+        TextureView *view{};
+        if (storageUsage && formatCompatible && guestTexture->layout == vk::ImageLayout::eGeneral) {
+            // Storage image views cannot use the guest TIC's component swizzle.
+            // Keep this identity view alive for the recorded submission.
+            auto identityView{guestTexture->GetView(guestView->type, guestView->range,
+                                                   requestedFormat, vk::ComponentMapping{})};
+            ctx.executor.AttachDependency(identityView);
+            view = identityView.get();
+        } else {
+            // Invalid/unmapped TICs must never become unbound Vulkan
+            // descriptors. Use a storage-capable, dimension-matched dummy.
+            view = textures.GetNullStorageTexture(ctx, desc.type, desc.format);
+        }
+
+        ctx.executor.AttachTexture(view);
+        view->texture->PopulateReadBarrier(dstStage, srcStageMask, dstStageMask);
+
+        // Store the write stage on the backing texture, so the next reader
+        // (sampled or storage) can issue a precise cross-dispatch barrier.
+        if (desc.is_written)
+            view->texture->RecordStorageWrite(dstStage, ctx.executor.usageTracker);
+
+        return vk::DescriptorImageInfo{
+            .sampler = {},
+            .imageView = view->GetView(true),
+            .imageLayout = vk::ImageLayout::eGeneral,
+        };
+    }
+
 }

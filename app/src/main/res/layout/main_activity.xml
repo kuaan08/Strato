@@ -228,12 +228,6 @@
             android:textColor="@color/mali_cyan" />
 
         <TextView
-            android:id="@+id/nav_library"
-            style="@style/MaliDockItem"
-            android:drawableTop="@drawable/mali_ic_library"
-            android:text="@string/mali_library" />
-
-        <TextView
             android:id="@+id/nav_install"
             style="@style/MaliDockItem"
             android:drawableTop="@drawable/mali_ic_install"

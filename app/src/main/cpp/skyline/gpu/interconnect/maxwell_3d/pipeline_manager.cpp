@@ -384,9 +384,14 @@ namespace skyline::gpu::interconnect::maxwell3d {
             }, needsIndividualTextureBindingWrites);
             pushBindings(vk::DescriptorType::eStorageImage, stage.info.image_descriptors,
                          stageDescInfo.storageImageDescTotalCount, stageDescInfo.storageImageDescs,
-                         [](const auto &, u16) {
-                LOGW("Image descriptors are not supported");
-            });
+                         [&](const Shader::ImageDescriptor &desc, u16 descIdx) {
+                // Quick binding must update storage image handles whenever the
+                // constant buffer supplying their TIC indexes changes.
+                auto &usage{stageDescInfo.cbufUsages[desc.cbuf_index]};
+                usage.storageImages.push_back({bindingIndex, descIdx, 0});
+                usage.totalImageDescCount += desc.count;
+                usage.writeDescCount++;
+            }, true);
             descriptorInfo.totalImageDescCount += stageDescInfo.combinedImageSamplerDescTotalCount + stageDescInfo.storageImageDescTotalCount;
         }
         return descriptorInfo;
@@ -769,6 +774,14 @@ namespace skyline::gpu::interconnect::maxwell3d {
         return descriptorInfo.totalCombinedImageSamplerCount;
     }
 
+    bool Pipeline::HasWritableStorageImages() const {
+        for (const auto &stage : descriptorInfo.stages)
+            for (const auto &image : stage.storageImageDescs)
+                if (image.is_written)
+                    return true;
+        return false;
+    }
+
     DescriptorUpdateInfo *Pipeline::SyncDescriptors(InterconnectContext &ctx, ConstantBufferSet &constantBuffers, Samplers &samplers, Textures &textures, span<TextureView *> sampledImages, vk::PipelineStageFlags &srcStageMask, vk::PipelineStageFlags &dstStageMask) {
         SyncCachedStorageBufferViews(ctx.executor.executionTag);
 
@@ -882,7 +895,22 @@ namespace skyline::gpu::interconnect::maxwell3d {
                                 return binding.first;
                             }, ctx.gpu.traits.quirks.needsIndividualTextureBindingWrites);
 
-            bindingIdx += stage.storageImageDescs.size();
+            // Every storage image has its own Vulkan binding. Never combine
+            // separate bindings into one WriteDescriptorSet: descriptorCount
+            // applies to array elements within that *single* binding.
+            for (const auto &desc : stage.storageImageDescs) {
+                writes[writeIdx++] = {
+                    .dstBinding = bindingIdx++,
+                    .descriptorCount = desc.count,
+                    .descriptorType = vk::DescriptorType::eStorageImage,
+                    .pImageInfo = &imageDescs[imageIdx],
+                };
+                for (u32 arrayIdx{}; arrayIdx < desc.count; ++arrayIdx) {
+                    const auto handle{ReadBindlessHandle(ctx, constantBuffers[i], desc, arrayIdx)};
+                    imageDescs[imageIdx++] = GetStorageImageBinding(ctx, desc, textures, handle,
+                                                                     stage.stage, srcStageMask, dstStageMask);
+                }
+            }
         }
 
         return ctx.executor.allocator->EmplaceUntracked<DescriptorUpdateInfo>(DescriptorUpdateInfo{
@@ -976,7 +1004,15 @@ namespace skyline::gpu::interconnect::maxwell3d {
                                                return binding.first;
                                            });
 
-        // Since we don't implement all descriptor types the number of writes might not match what's expected
+        writeDescs.operator()<true, false>(vk::DescriptorType::eStorageImage,
+                                           cbufUsageInfo.storageImages, stageDescInfo.storageImageDescs,
+                                           [&](auto usage, const DescriptorInfo::StageDescriptorInfo::StorageImageDesc &desc, size_t arrayIdx) {
+                                               const auto handle{ReadBindlessHandle(ctx, stageConstantBuffers, desc, arrayIdx)};
+                                               return GetStorageImageBinding(ctx, desc, textures, handle,
+                                                                             stageDescInfo.stage, srcStageMask, dstStageMask);
+                                           });
+
+        // The writes above cover only descriptors owned by the changed CBUF.
         if (!writeIdx)
             return nullptr;
 

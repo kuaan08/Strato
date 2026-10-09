@@ -185,6 +185,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
                     boost::container::small_vector<Usage, 2> uniformBuffers;
                     boost::container::small_vector<Usage, 2> storageBuffers;
                     boost::container::small_vector<Usage, 2> combinedImageSamplers;
+                    boost::container::small_vector<Usage, 1> storageImages;
                     u16 totalBufferDescCount;
                     u16 totalImageDescCount;
                     u16 writeDescCount;
@@ -246,6 +247,8 @@ namespace skyline::gpu::interconnect::maxwell3d {
         bool CheckBindingMatch(Pipeline *other);
 
         u32 GetTotalSampledImageCount() const;
+
+        bool HasWritableStorageImages() const;
 
         /**
          * @brief Creates a descriptor set update from the current GPU state

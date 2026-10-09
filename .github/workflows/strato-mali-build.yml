@@ -61,6 +61,9 @@ jobs:
       - name: Test guest frame pacing (ASan/UBSan)
         run: python3 tests/test_frame_pacing.py
 
+      - name: Validate Vulkan storage image descriptor wiring
+        run: python3 tests/test_storage_image_bindings.py
+
       - name: Test NVDEC and VIC video pipeline (ASan/UBSan)
         run: |
           sudo apt-get update && sudo apt-get install -y libavcodec-dev libavutil-dev

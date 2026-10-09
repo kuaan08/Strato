@@ -179,7 +179,6 @@ class MainActivity : AppCompatActivity() {
             binding.appBarLayout.setExpanded(true)
             binding.appList.smoothScrollToPosition(0)
         }
-        binding.navLibrary.setOnClickListener { toggleSearch() }
         // Game details already contain the DLC/Update installation action.
         binding.navInstall.setOnClickListener { selectedGame?.let(::selectShowGameDialog) }
         binding.navAdd.setOnClickListener { documentPicker.launch(null) }

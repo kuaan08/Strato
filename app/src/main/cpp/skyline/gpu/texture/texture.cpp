@@ -80,17 +80,26 @@ namespace skyline::gpu {
 
     TextureView::TextureView(std::shared_ptr<Texture> texture, vk::ImageViewType type, vk::ImageSubresourceRange range, texture::Format format, vk::ComponentMapping mapping) : texture(std::move(texture)), type(type), format(format), mapping(mapping), range(range) {}
 
-    Texture::TextureViewStorage::TextureViewStorage(vk::ImageViewType type, texture::Format format, vk::ComponentMapping mapping, vk::ImageSubresourceRange range, vk::raii::ImageView &&vkView) : type(type), format(format), mapping(mapping), range(range), vkView(std::move(vkView)) {}
+    Texture::TextureViewStorage::TextureViewStorage(vk::ImageViewType type, texture::Format format, vk::ComponentMapping mapping, vk::ImageSubresourceRange range, bool storageOnly, vk::raii::ImageView &&vkView)
+        : type(type), format(format), mapping(mapping), range(range), storageOnly(storageOnly), vkView(std::move(vkView)) {}
 
-    vk::ImageView TextureView::GetView() {
-        if (vkView)
-            return vkView;
+    vk::ImageView TextureView::GetView(bool storageOnly) {
+        auto &cachedView{storageOnly ? vkStorageView : vkView};
+        if (cachedView)
+            return cachedView;
 
-        auto it{std::find_if(texture->views.begin(), texture->views.end(), [this](const Texture::TextureViewStorage &view) {
-            return view.type == type && view.format == format && view.mapping == mapping && view.range == range;
+        auto it{std::find_if(texture->views.begin(), texture->views.end(), [this, storageOnly](const Texture::TextureViewStorage &view) {
+            return view.type == type && view.format == format && view.mapping == mapping &&
+                   view.range == range && view.storageOnly == storageOnly;
         })};
         if (it == texture->views.end()) {
+            // Match the view-usage limitation used by Vulkan texture caches:
+            // a typed storage format must not inherit sampled/attachment usage.
+            vk::ImageViewUsageCreateInfo viewUsage{
+                .usage = vk::ImageUsageFlagBits::eStorage,
+            };
             vk::ImageViewCreateInfo createInfo{
+                .pNext = storageOnly ? &viewUsage : nullptr,
                 .image = texture->GetBacking(),
                 .viewType = type,
                 .format = format ? *format : *texture->format,
@@ -98,10 +107,11 @@ namespace skyline::gpu {
                 .subresourceRange = range,
             };
 
-            it = texture->views.emplace(texture->views.end(), type, format, mapping, range, vk::raii::ImageView{texture->gpu.vkDevice, createInfo});
+            it = texture->views.emplace(texture->views.end(), type, format, mapping, range,
+                                        storageOnly, vk::raii::ImageView{texture->gpu.vkDevice, createInfo});
         }
 
-        return vkView = *it->vkView;
+        return cachedView = *it->vkView;
     }
 
     vk::ImageView TextureView::GetScaledView() {
@@ -682,8 +692,14 @@ namespace skyline::gpu {
           sampleCount(vk::SampleCountFlagBits::e1),
           flags(gpu.traits.quirks.vkImageMutableFormatCostly ? vk::ImageCreateFlags{} : vk::ImageCreateFlagBits::eMutableFormat),
           usage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled) {
-        if ((format->vkAspect & vk::ImageAspectFlagBits::eColor) && !format->IsCompressed())
+        if ((format->vkAspect & vk::ImageAspectFlagBits::eColor) && !format->IsCompressed()) {
             usage |= vk::ImageUsageFlagBits::eColorAttachment;
+            // Storage images use the same guest texture cache as sampled images.
+            // Only request storage usage for formats that the host can actually write.
+            const auto features{gpu.vkPhysicalDevice.getFormatProperties(format->vkFormat).optimalTilingFeatures};
+            if (features & vk::FormatFeatureFlagBits::eStorageImage)
+                usage |= vk::ImageUsageFlagBits::eStorage;
+        }
         if (format->vkAspect & (vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil))
             usage |= vk::ImageUsageFlagBits::eDepthStencilAttachment;
 
@@ -1175,11 +1191,27 @@ namespace skyline::gpu {
         return readStageMask;
     }
 
+    void Texture::RecordStorageWrite(vk::PipelineStageFlagBits stage, UsageTracker &tracker) {
+        if (!guest)
+            return;
+        MarkGpuDirty(tracker);
+        InvalidateScaledContent();
+        pendingStorageWriteStages |= stage;
+    }
+
     void Texture::PopulateReadBarrier(vk::PipelineStageFlagBits dstStage, vk::PipelineStageFlags &srcStageMask, vk::PipelineStageFlags &dstStageMask) {
         if (!guest)
             return;
 
         readStageMask |= dstStage;
+
+        // Shader storage writes need a memory dependency before the next
+        // read or write, even when neither operation is a render target.
+        if (pendingStorageWriteStages) {
+            srcStageMask |= pendingStorageWriteStages;
+            dstStageMask |= dstStage;
+            pendingStorageWriteStages = {};
+        }
 
         if (!(pendingStageMask & dstStage))
             return;

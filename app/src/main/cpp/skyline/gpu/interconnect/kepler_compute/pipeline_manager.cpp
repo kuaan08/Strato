@@ -58,9 +58,7 @@ namespace skyline::gpu::interconnect::kepler_compute {
 
         pushBindings(vk::DescriptorType::eCombinedImageSampler, stage.info.texture_descriptors, descriptorInfo.totalImageDescCount);
         pushBindings(vk::DescriptorType::eStorageImage, stage.info.image_descriptors, descriptorInfo.totalImageDescCount);
-        if (stage.info.image_descriptors.size() > 0)
-            LOGW("Image descriptors are not supported");
-
+        // Compute storage-image bindings are filled by SyncDescriptors.
         return descriptorInfo;
     }
 
@@ -191,6 +189,10 @@ namespace skyline::gpu::interconnect::kepler_compute {
                              return binding;
                          });
 
+        // Texture-buffer descriptor bindings precede both classes of images.
+        bindingIdx += shaderStage.info.texture_buffer_descriptors.size() +
+                      shaderStage.info.image_buffer_descriptors.size();
+
         writeImageDescs(vk::DescriptorType::eCombinedImageSampler, shaderStage.info.texture_descriptors,
                         [&](const Shader::TextureDescriptor &desc, size_t arrayIdx) {
                             BindlessHandle handle{ReadBindlessHandle(ctx, constantBuffers, desc, arrayIdx)};
@@ -199,6 +201,14 @@ namespace skyline::gpu::interconnect::kepler_compute {
                                                            vk::PipelineStageFlagBits::eComputeShader,
                                                            srcStageMask, dstStageMask)};
                             return binding.first;
+                        });
+
+        writeImageDescs(vk::DescriptorType::eStorageImage, shaderStage.info.image_descriptors,
+                        [&](const Shader::ImageDescriptor &desc, size_t arrayIdx) {
+                            const auto handle{ReadBindlessHandle(ctx, constantBuffers, desc, arrayIdx)};
+                            return GetStorageImageBinding(ctx, desc, textures, handle,
+                                                          vk::PipelineStageFlagBits::eComputeShader,
+                                                          srcStageMask, dstStageMask);
                         });
 
         // Since we don't implement all descriptor types the number of writes might not match what's expected

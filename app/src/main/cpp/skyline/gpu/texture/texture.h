@@ -320,6 +320,7 @@ namespace skyline::gpu {
     class TextureView : public std::enable_shared_from_this<TextureView> {
       private:
         vk::ImageView vkView{};
+        vk::ImageView vkStorageView{};
 
       public:
         LockableSharedPtr<Texture> texture;
@@ -363,7 +364,7 @@ namespace skyline::gpu {
          * @return A VkImageView that corresponds to the properties of this view
          * @note The texture **must** be locked prior to calling this
          */
-        vk::ImageView GetView();
+        vk::ImageView GetView(bool storageOnly = false);
         // Recording-thread only. Returns null for views that cannot use the
         // scaled companion; this never silently substitutes a different view.
         vk::ImageView GetScaledView();
@@ -405,9 +406,10 @@ namespace skyline::gpu {
             texture::Format format;
             vk::ComponentMapping mapping;
             vk::ImageSubresourceRange range;
+            bool storageOnly;
             vk::raii::ImageView vkView;
 
-            TextureViewStorage(vk::ImageViewType type, texture::Format format, vk::ComponentMapping mapping, vk::ImageSubresourceRange range, vk::raii::ImageView &&vkView);
+            TextureViewStorage(vk::ImageViewType type, texture::Format format, vk::ComponentMapping mapping, vk::ImageSubresourceRange range, bool storageOnly, vk::raii::ImageView &&vkView);
         };
 
         std::vector<TextureViewStorage> views;
@@ -418,6 +420,7 @@ namespace skyline::gpu {
         texture::RenderPassUsage lastRenderPassUsage{texture::RenderPassUsage::None}; //!< The type of usage in the last render pass
         bool everUsedAsRt{}; //!< If this texture has ever been used as a rendertarget
         vk::PipelineStageFlags pendingStageMask{}; //!< List of pipeline stages that are yet to be flushed for reads since the last time this texture was used an an RT
+        vk::PipelineStageFlags pendingStorageWriteStages{}; //!< Shader stages with unflushed storage-image writes
         vk::PipelineStageFlags readStageMask{}; //!< Set of pipeline stages that this texture has been read in since it was last used as an RT
 
         friend TextureManager;
@@ -647,6 +650,9 @@ namespace skyline::gpu {
          * @brief Populates the input src and dst stage masks with appropriate read barrier parameters for the current texture state
          */
         void PopulateReadBarrier(vk::PipelineStageFlagBits dstStage, vk::PipelineStageFlags &srcStageMask, vk::PipelineStageFlags &dstStageMask);
+
+        // Called while the texture is attached/locked for a storage-image write.
+        void RecordStorageWrite(vk::PipelineStageFlagBits stage, UsageTracker &tracker);
     };
 }
 

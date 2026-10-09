@@ -355,6 +355,10 @@ namespace skyline::gpu::interconnect::maxwell3d {
                 commandBuffer.endTransformFeedbackEXT(0, {}, {});
         }, scissor, activeDescriptorSetSampledImages, {}, activeState.GetColorAttachments(), activeState.GetDepthAttachment(), !ctx.gpu.traits.quirks.relaxedRenderPassCompatibility, srcStageMask, dstStageMask, activeState.GetPipeline()->supportsResolutionScaling && !transformFeedbackEnable);
         ctx.executor.AddCheckpoint("After draw");
+        // A storage write inside a render pass must be visible to the next
+        // pass/dispatch. End this pass and emit a memory barrier only when needed.
+        if (activeState.GetPipeline()->HasWritableStorageImages())
+            ctx.executor.AddFullBarrier();
     }
 
     void Maxwell3D::DrawIndirect(engine::DrawTopology topology, bool transformFeedbackEnable, bool indexed, span<u8> indirectBuffer, u32 count, u32 stride) {
@@ -418,6 +422,8 @@ namespace skyline::gpu::interconnect::maxwell3d {
                 commandBuffer.endTransformFeedbackEXT(0, {}, {});
         }, scissor, activeDescriptorSetSampledImages, {}, activeState.GetColorAttachments(), activeState.GetDepthAttachment(), !ctx.gpu.traits.quirks.relaxedRenderPassCompatibility, srcStageMask, dstStageMask, activeState.GetPipeline()->supportsResolutionScaling && !transformFeedbackEnable);
         ctx.executor.AddCheckpoint("After indirect draw");
+        if (activeState.GetPipeline()->HasWritableStorageImages())
+            ctx.executor.AddFullBarrier();
     }
 
     void Maxwell3D::Query(soc::gm20b::IOVA address, engine::SemaphoreInfo::CounterType type, std::optional<u64> timestamp) {

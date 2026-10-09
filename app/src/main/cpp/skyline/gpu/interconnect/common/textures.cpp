@@ -360,6 +360,78 @@ namespace skyline::gpu::interconnect {
         return texture.get();
     }
 
+
+    TextureView *Textures::GetNullStorageTexture(InterconnectContext &ctx, Shader::TextureType type, Shader::ImageFormat imageFormat) {
+        auto &cached{nullStorageTextureViews[{type, imageFormat}]};
+        if (cached)
+            return cached.get();
+
+        texture::Format hostFormat{StorageImageViewFormat(imageFormat)};
+        if (!hostFormat)
+            hostFormat = format::R32Uint;
+
+        // Vulkan storage descriptors must reference a storage-capable image.
+        // Refuse to create an invalid VkImage even for missing guest textures.
+        const auto supportsStorage{[&](texture::Format candidate) {
+            return bool(ctx.gpu.vkPhysicalDevice.getFormatProperties(candidate->vkFormat).optimalTilingFeatures &
+                        vk::FormatFeatureFlagBits::eStorageImage);
+        }};
+        if (!supportsStorage(hostFormat)) {
+            LOGW("Storage image dummy format {} is unsupported by the driver, using R32Uint", vk::to_string(hostFormat->vkFormat));
+            hostFormat = format::R32Uint;
+        }
+
+        vk::ImageType imageType{vk::ImageType::e2D};
+        vk::ImageViewType viewType{vk::ImageViewType::e2D};
+        switch (type) {
+            case Shader::TextureType::Color1D:
+                imageType = vk::ImageType::e1D;
+                viewType = vk::ImageViewType::e1D;
+                break;
+            case Shader::TextureType::ColorArray1D:
+                imageType = vk::ImageType::e1D;
+                viewType = vk::ImageViewType::e1DArray;
+                break;
+            case Shader::TextureType::ColorArray2D:
+                viewType = vk::ImageViewType::e2DArray;
+                break;
+            case Shader::TextureType::Color3D:
+                imageType = vk::ImageType::e3D;
+                viewType = vk::ImageViewType::e3D;
+                break;
+            default:
+                break;
+        }
+
+        constexpr vk::ImageUsageFlags usage{
+            vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled |
+            vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst
+        };
+        constexpr texture::Dimensions size{1, 1, 1};
+        auto image{ctx.gpu.memory.AllocateImage(vk::ImageCreateInfo{
+            .imageType = imageType,
+            .format = hostFormat->vkFormat,
+            .extent = size,
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eOptimal,
+            .usage = usage,
+            .sharingMode = vk::SharingMode::eExclusive,
+            .initialLayout = vk::ImageLayout::eUndefined,
+        })};
+        auto texture{std::make_shared<Texture>(ctx.gpu, std::move(image), size, hostFormat,
+                                               vk::ImageLayout::eUndefined, vk::ImageTiling::eOptimal,
+                                               vk::ImageCreateFlags{}, usage)};
+        texture->TransitionLayout(vk::ImageLayout::eGeneral);
+        cached = texture->GetView(viewType, vk::ImageSubresourceRange{
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .levelCount = 1,
+            .layerCount = 1,
+        });
+        return cached.get();
+    }
+
     Shader::TextureType Textures::GetTextureType(InterconnectContext &ctx, u32 index) {
         auto textureHeaders{texturePool.UpdateGet(ctx).textureHeaders};
         switch (textureHeaders[index].textureType) {
