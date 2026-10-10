@@ -251,6 +251,12 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
         bool HasWritableStorageImages() const;
 
+        // Diagnostic correlation only: exact guest shader hashes for this
+        // pipeline. Does not expose or modify compiled shader modules.
+        const auto &GetShaderHashes() const {
+            return sourcePackedState.shaderHashes;
+        }
+
         /**
          * @brief Creates a descriptor set update from the current GPU state
          * @param sampledImages A span of size `GetTotalSampledImageCount()` in which texture view pointers for each sampled image will be written

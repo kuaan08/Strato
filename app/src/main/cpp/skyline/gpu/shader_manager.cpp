@@ -74,6 +74,11 @@ namespace skyline::gpu {
     }
 
     ShaderManager::ShaderManager(const DeviceState &state, GPU &gpu, std::string_view replacementDir, std::string_view dumpDir) : gpu{gpu}, dumpPath{dumpDir} {
+        // The experiment is gated by Kirby's title ID in GPU::Initialise().
+        // Reset explicitly when a different game is launched in the same app.
+        Shader::Settings::kirby_packed_wscale_test.store(gpu.kirbyDiagnosticsEnabled, std::memory_order_relaxed);
+        if (gpu.kirbyDiagnosticsEnabled)
+            LOGI("KIRBY_EXPERIMENT packed WScale 0x00FF0000 enabled (shader-only test; no driver changes)");
         LoadShaderReplacements(replacementDir);
 
         if constexpr (DumpShaders) {

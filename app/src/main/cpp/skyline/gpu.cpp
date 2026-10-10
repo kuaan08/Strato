@@ -432,13 +432,16 @@ namespace skyline::gpu {
         if (kirbyDiagnosticsEnabled)
             LOGI("KIRBY_DIAG enabled title=01004D300C5AE000: tracing TIC, CBUF, sampled images, and render targets");
         std::string titleId{state.loader->nacp->GetSaveDataOwnerId()};
-        graphicsPipelineAssembler.emplace(*this, state.os->publicAppFilesPath + "vk_graphics_pipeline_cache/" + titleId);
+        // Never reuse native pipeline binaries from the unmodified compiler:
+        // the Kirby experiment changes SPIR-V without changing guest hashes.
+        const std::string shaderCacheKey{titleId + (kirbyDiagnosticsEnabled ? "_kirby_wscale_ab1" : "")};
+        graphicsPipelineAssembler.emplace(*this, state.os->publicAppFilesPath + "vk_graphics_pipeline_cache/" + shaderCacheKey);
         shader.emplace(state, *this,
                        state.os->publicAppFilesPath + "shader_replacements/" + titleId,
                        state.os->publicAppFilesPath + "shader_dumps/" + titleId);
         if (!*state.settings->disableShaderCache)
             graphicsPipelineCacheManager.emplace(state,
-                                                 state.os->publicAppFilesPath + "graphics_pipeline_cache/" + titleId);
+                                                 state.os->publicAppFilesPath + "graphics_pipeline_cache/" + shaderCacheKey);
         graphicsPipelineManager.emplace(*this, *state.jvm);
     }
 }

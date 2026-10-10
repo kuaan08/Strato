@@ -354,6 +354,14 @@ namespace skyline::gpu::interconnect::maxwell3d {
                      sample, indexed, count, scissor.offset.x, scissor.offset.y,
                      scissor.extent.width, scissor.extent.height);
                 const auto colorTargets{activeState.GetColorAttachments()};
+                // Pair the MRT layout with each active guest shader. These
+                // hashes let us correlate a black/white intermediate pass
+                // with its specific vertex/fragment program in the next log.
+                const auto &shaderHashes{activeState.GetPipeline()->GetShaderHashes()};
+                for (size_t stage{}; stage < shaderHashes.size(); ++stage)
+                    if (shaderHashes[stage])
+                        LOGI("KIRBY_EXPERIMENT pipeline sample={} stage={} shaderHash=0x{:016X}",
+                             sample, static_cast<u32>(stage), shaderHashes[stage]);
                 for (size_t i{}; i < colorTargets.size(); ++i) {
                     auto *view{colorTargets[i]};
                     if (!view)
