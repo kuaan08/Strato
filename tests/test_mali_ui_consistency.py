@@ -13,16 +13,21 @@ ANDROID = "{http://schemas.android.com/apk/res/android}"
 
 
 class MaliUIConsistencyTests(unittest.TestCase):
-    def test_transparent_real_png_and_app_icon(self):
+    def test_launcher_icon_opaque_and_in_app_logo_transparent(self):
         logo = RES / "drawable/strato_mali_logo_transparent.png"
         raw = logo.read_bytes()
         self.assertTrue(raw.startswith(b"\x89PNG\r\n\x1a\n"))
         width, height, depth, color_type, _, _, _ = struct.unpack(">IIBBBBB", raw[16:29])
         self.assertEqual((width, height, depth, color_type), (1536, 1536, 8, 6))
+        # Android launcher must use the original opaque, black-background art.
+        launcher = (RES / "drawable/strato_mali_logo_separada_azul.png").read_bytes()
+        self.assertTrue(launcher.startswith(b"\x89PNG\r\n\x1a\n"))
+        launch_width, launch_height, launch_depth, launch_type, *_ = struct.unpack(">IIBBBBB", launcher[16:29])
+        self.assertEqual((launch_width, launch_height, launch_depth, launch_type), (1536, 1536, 8, 2))
         manifest = ET.parse(ROOT / "app/src/main/AndroidManifest.xml").getroot()
         app = manifest.find("application")
-        self.assertEqual(app.attrib[ANDROID + "icon"], "@drawable/strato_mali_logo_transparent")
-        self.assertEqual(app.attrib[ANDROID + "roundIcon"], "@drawable/strato_mali_logo_transparent")
+        self.assertEqual(app.attrib[ANDROID + "icon"], "@drawable/strato_mali_logo_separada_azul")
+        self.assertEqual(app.attrib[ANDROID + "roundIcon"], "@drawable/strato_mali_logo_separada_azul")
 
     def test_library_layout_changes_only_icon(self):
         layout = ROOT / "app/src/main/res/layout/main_activity.xml"
