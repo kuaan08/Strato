@@ -77,23 +77,39 @@ namespace skyline::gpu::interconnect {
 
     static BindlessHandle ReadBindlessHandle(InterconnectContext &ctx, auto &constantBuffers, const auto &desc, size_t arrayIdx) {
         ConstantBuffer &primaryCbuf{constantBuffers[desc.cbuf_index]};
-        if (!primaryCbuf.view)
+        if (!primaryCbuf.view) {
+            if (ctx.gpu.kirbyDiagnosticsEnabled &&
+                ctx.gpu.kirbyMissingCbufSamples.fetch_add(1, std::memory_order_relaxed) < 64) {
+                LOGW("KIRBY_DIAG missing CBUF cbuf={} offset=0x{:X} element={} -> bindless=0",
+                     static_cast<u32>(desc.cbuf_index), static_cast<u32>(desc.cbuf_offset),
+                     static_cast<u32>(arrayIdx));
+            }
             return { .raw = 0 };
+        }
 
         size_t elemOffset{arrayIdx << desc.size_shift};
         size_t primaryCbufOffset{desc.cbuf_offset + elemOffset};
         u32 primaryVal{primaryCbuf.Read<u32>(ctx.executor, primaryCbufOffset)};
+        u32 handleValue{primaryVal};
 
         if constexpr (requires { desc.has_secondary; }) {
             if (desc.has_secondary) {
                 ConstantBuffer &secondaryCbuf{constantBuffers[desc.secondary_cbuf_index]};
                 size_t secondaryCbufOffset{desc.secondary_cbuf_offset + elemOffset};
                 u32 secondaryVal{secondaryCbuf.Read<u32>(ctx.executor, secondaryCbufOffset)};
-                return {.raw = (primaryVal << desc.shift_left) | (secondaryVal << desc.secondary_shift_left)};
+                handleValue = (primaryVal << desc.shift_left) | (secondaryVal << desc.secondary_shift_left);
             }
         }
 
-        return {.raw = primaryVal};
+        if (ctx.gpu.kirbyDiagnosticsEnabled) {
+            const u32 sample{ctx.gpu.kirbyHandleSamples.fetch_add(1, std::memory_order_relaxed)};
+            if (sample < 48 || (sample % 512 == 0 && sample < 32768)) {
+                LOGI("KIRBY_DIAG CBUF handle sample={} index={} offset=0x{:X} elem={} primary=0x{:08X} handle=0x{:08X}",
+                     sample, static_cast<u32>(desc.cbuf_index), static_cast<u32>(primaryCbufOffset),
+                     static_cast<u32>(arrayIdx), primaryVal, handleValue);
+            }
+        }
+        return {.raw = handleValue};
     }
 
     static std::pair<vk::DescriptorImageInfo, TextureView *> GetTextureBinding(InterconnectContext &ctx, const auto &desc,
@@ -103,6 +119,18 @@ namespace skyline::gpu::interconnect {
                                                                                vk::PipelineStageFlags &srcStageMask, vk::PipelineStageFlags &dstStageMask) {
         auto sampler{samplers.GetSampler(ctx, handle.samplerIndex, handle.textureIndex)};
         auto texture{textures.GetTexture(ctx, handle.textureIndex, desc.type)};
+        if (ctx.gpu.kirbyDiagnosticsEnabled) {
+            const u32 sample{ctx.gpu.kirbyTextureSamples.fetch_add(1, std::memory_order_relaxed)};
+            if (sample < 40 || (sample % 512 == 0 && sample < 32768)) {
+                LOGI("KIRBY_DIAG sampled image sample={} handle=0x{:08X} tic={} sampler={} guest={} fmt={} size={}x{} usage={} layout={}",
+                     sample, handle.raw, static_cast<u32>(handle.textureIndex),
+                     static_cast<u32>(handle.samplerIndex), bool(texture->texture->guest),
+                     static_cast<u32>(texture->texture->format->vkFormat),
+                     texture->texture->dimensions.width, texture->texture->dimensions.height,
+                     static_cast<u32>(static_cast<VkImageUsageFlags>(texture->texture->usage)),
+                     static_cast<u32>(texture->texture->layout));
+            }
+        }
         ctx.executor.AttachTexture(texture);
         auto view{texture->GetView()};
         texture->texture->PopulateReadBarrier(dstStage, srcStageMask, dstStageMask);

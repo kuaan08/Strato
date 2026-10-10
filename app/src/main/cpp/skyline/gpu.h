@@ -53,6 +53,15 @@ namespace skyline::gpu {
         // to every guest texture disables important Mali tiling/compression
         // optimizations. Enable it only after encountering a shader that needs
         // storage images, and cache host-format support per GPU session.
+        // Diagnostic-only instrumentation, gated by the exact Kirby title ID.
+        // No runtime logging or shader changes for other titles.
+        bool kirbyDiagnosticsEnabled{};
+        std::atomic<u32> kirbyHandleSamples{};
+        std::atomic<u32> kirbyMissingCbufSamples{};
+        std::atomic<u32> kirbyTextureSamples{};
+        std::atomic<u32> kirbyRenderTargetSamples{};
+        std::atomic<u32> kirbyClearSamples{};
+
         std::atomic<bool> storageImageShadersSeen{false};
         std::mutex storageFormatCacheMutex;
         std::unordered_map<u32, bool> storageFormatSupportCache;

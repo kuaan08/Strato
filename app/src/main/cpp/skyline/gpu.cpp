@@ -426,6 +426,11 @@ namespace skyline::gpu {
     }
 
     void GPU::Initialise() {
+        // Kirby and the Forgotten Land (base program, including its updates).
+        // Enable bounded diagnostic traces without altering guest behavior.
+        kirbyDiagnosticsEnabled = state.loader && state.loader->programId == 0x01004D300C5AE000ULL;
+        if (kirbyDiagnosticsEnabled)
+            LOGI("KIRBY_DIAG enabled title=01004D300C5AE000: tracing TIC, CBUF, sampled images, and render targets");
         std::string titleId{state.loader->nacp->GetSaveDataOwnerId()};
         graphicsPipelineAssembler.emplace(*this, state.os->publicAppFilesPath + "vk_graphics_pipeline_cache/" + titleId);
         shader.emplace(state, *this,

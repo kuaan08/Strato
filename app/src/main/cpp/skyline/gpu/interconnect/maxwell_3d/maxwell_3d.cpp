@@ -205,6 +205,16 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
     void Maxwell3D::Clear(engine::ClearSurface &clearSurface) {
         auto scissor{GetClearScissor()};
+        if (ctx.gpu.kirbyDiagnosticsEnabled) {
+            const u32 sample{ctx.gpu.kirbyClearSamples.fetch_add(1, std::memory_order_relaxed)};
+            if (sample < 16 || (sample % 400 == 0 && sample < 6400)) {
+                LOGI("KIRBY_DIAG clear sample={} mrt={} rgba={}{}{}{} depth={} stencil={} scissor=({},{} {}x{})",
+                     sample, static_cast<u32>(clearSurface.mrtSelect), bool(clearSurface.rEnable),
+                     bool(clearSurface.gEnable), bool(clearSurface.bEnable), bool(clearSurface.aEnable),
+                     bool(clearSurface.zEnable), bool(clearSurface.stencilEnable),
+                     scissor.offset.x, scissor.offset.y, scissor.extent.width, scissor.extent.height);
+            }
+        }
         if (scissor.extent.width == 0 || scissor.extent.height == 0)
             return;
 
@@ -337,6 +347,32 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
         vk::Rect2D scissor{GetDrawScissor()};
 
+        if (ctx.gpu.kirbyDiagnosticsEnabled) {
+            const u32 sample{ctx.gpu.kirbyRenderTargetSamples.fetch_add(1, std::memory_order_relaxed)};
+            if (sample < 24 || (sample % 320 == 0 && sample < 20480)) {
+                LOGI("KIRBY_DIAG draw RT sample={} indexed={} count={} scissor=({},{} {}x{})",
+                     sample, indexed, count, scissor.offset.x, scissor.offset.y,
+                     scissor.extent.width, scissor.extent.height);
+                const auto colorTargets{activeState.GetColorAttachments()};
+                for (size_t i{}; i < colorTargets.size(); ++i) {
+                    auto *view{colorTargets[i]};
+                    if (!view)
+                        continue;
+                    const auto &target{*view->texture};
+                    LOGI("KIRBY_DIAG draw colorRT sample={} slot={} fmt={} size={}x{} layers={} layout={} scaled={}",
+                         sample, static_cast<u32>(i), static_cast<u32>(target.format->vkFormat),
+                         target.dimensions.width, target.dimensions.height,
+                         target.layerCount, static_cast<u32>(target.layout), bool(target.scaledRenderTarget));
+                }
+                if (auto *depth{activeState.GetDepthAttachment()}) {
+                    const auto &target{*depth->texture};
+                    LOGI("KIRBY_DIAG draw depthRT sample={} fmt={} size={}x{} layout={}",
+                         sample, static_cast<u32>(target.format->vkFormat),
+                         target.dimensions.width, target.dimensions.height,
+                         static_cast<u32>(target.layout));
+                }
+            }
+        }
 
         constantBuffers.ResetQuickBind();
         // AddSubpass may submit command buffers and invalidate the cached

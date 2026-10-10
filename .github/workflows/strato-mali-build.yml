@@ -64,6 +64,9 @@ jobs:
       - name: Validate Vulkan storage image descriptor wiring
         run: python3 tests/test_storage_image_bindings.py
 
+      - name: Validate Kirby-only GPU diagnostics
+        run: python3 tests/test_kirby_diagnostics.py
+
       - name: Test NVDEC and VIC video pipeline (ASan/UBSan)
         run: |
           sudo apt-get update && sudo apt-get install -y libavcodec-dev libavutil-dev
