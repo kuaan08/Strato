@@ -151,7 +151,7 @@ namespace skyline::gpu::interconnect {
             static std::atomic<u32> fallbackReports{};
             if (fallbackReports.fetch_add(1, std::memory_order_relaxed) < 12) {
                 LOGW("Storage image fallback: TIC={} shaderFmt={} hostFmt={} storageUsage={} compatible={} layout={}",
-                     handle.textureIndex, static_cast<u32>(desc.format),
+                     static_cast<u32>(handle.textureIndex), static_cast<u32>(desc.format),
                      static_cast<u32>(guestTexture->format->vkFormat), storageUsage,
                      formatCompatible, static_cast<u32>(guestTexture->layout));
             }

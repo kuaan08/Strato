@@ -49,6 +49,8 @@ class StorageImageBindingTests(unittest.TestCase):
         self.assertIn("vk::ImageLayout::eGeneral", path)
         self.assertIn("GetNullStorageTexture(", path)
         self.assertIn("view->GetView(true)", path)
+        # fmt forwarding references cannot bind directly to bit-fields.
+        self.assertIn("static_cast<u32>(handle.textureIndex)", path)
         image_views = source("texture/texture.cpp")
         self.assertIn("vk::ImageViewUsageCreateInfo", image_views)
         self.assertIn("view.storageOnly == storageOnly", image_views)
