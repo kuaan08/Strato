@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="settings_blue">#155DCE</color>
-    <color name="settings_background">#F5F8FF</color>
-    <color name="settings_container_blue">#DCE8FF</color>
-    <color name="settings_on_container">#0B2B59</color>
-    <color name="settings_secondary_text">#425773</color>
-    <color name="settings_outline">#BACFEE</color>
+    <color name="settings_blue">#2C9CFF</color>
+    <color name="settings_background">#07162F</color>
+    <color name="settings_container_blue">#123C76</color>
+    <color name="settings_on_container">#F1F7FF</color>
+    <color name="settings_secondary_text">#AEC3E4</color>
+    <color name="settings_outline">#296AB1</color>
     <style name="SettingsBlueTheme">
         <item name="colorPrimary">@color/settings_blue</item>
         <item name="colorAccent">@color/settings_blue</item>
@@ -21,6 +21,9 @@
         <item name="colorOnSurfaceVariant">@color/settings_secondary_text</item>
         <item name="android:colorBackground">@color/settings_background</item>
         <item name="android:statusBarColor">@color/settings_background</item>
+        <item name="android:navigationBarColor">@color/settings_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
     <string name="settings_hub_title">Settings</string>
     <string name="settings_version_label">Version %1$s</string>

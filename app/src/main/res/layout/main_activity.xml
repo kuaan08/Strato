@@ -34,7 +34,7 @@
                     android:layout_height="48dp"
                     android:contentDescription="@string/app_name"
                     android:scaleType="fitCenter"
-                    android:src="@drawable/strato_mali_logo_separada_azul" />
+                    android:src="@drawable/strato_mali_logo_transparent" />
 
                 <TextView
                     android:layout_width="wrap_content"

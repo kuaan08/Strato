@@ -1,9 +1,8 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="settings_blue">#91BCFF</color>
-    <color name="settings_background">#0C1423</color>
-    <color name="settings_container_blue">#152E52</color>
-    <color name="settings_on_container">#E0ECFF</color>
-    <color name="settings_secondary_text">#B3C4DE</color>
-    <color name="settings_outline">#355782</color>
+    <color name="settings_blue">#2C9CFF</color>
+    <color name="settings_background">#07162F</color>
+    <color name="settings_container_blue">#123C76</color>
+    <color name="settings_on_container">#F1F7FF</color>
+    <color name="settings_secondary_text">#AEC3E4</color>
+    <color name="settings_outline">#296AB1</color>
 </resources>

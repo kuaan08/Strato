@@ -75,6 +75,9 @@ jobs:
       - name: Validate save export and Update/DLC integrity
         run: python3 tests/test_save_and_content_safety.py
 
+      - name: Validate Mali interface consistency and transparent icon
+        run: python3 tests/test_mali_ui_consistency.py
+
       - name: Validate Ko-fi welcome dialog and setup isolation
         run: python3 tests/test_kofi_startup.py
 

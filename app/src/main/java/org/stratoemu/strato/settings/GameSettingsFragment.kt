@@ -28,6 +28,10 @@ class GameSettingsFragment : PreferenceFragmentCompat() {
         super.onViewCreated(view, savedInstanceState)
         val recyclerView = view.findViewById<View>(androidx.preference.R.id.recycler_view)
         WindowInsetsHelper.setPadding(recyclerView, bottom = true)
+        (recyclerView as? androidx.recyclerview.widget.RecyclerView)?.apply {
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            addItemDecoration(MaliPreferenceCards(requireContext()))
+        }
 
         (activity as AppCompatActivity).supportActionBar?.subtitle = item.title
     }
