@@ -19,15 +19,18 @@ class MaliUIConsistencyTests(unittest.TestCase):
         self.assertTrue(raw.startswith(b"\x89PNG\r\n\x1a\n"))
         width, height, depth, color_type, _, _, _ = struct.unpack(">IIBBBBB", raw[16:29])
         self.assertEqual((width, height, depth, color_type), (1536, 1536, 8, 6))
-        # Android launcher must use the original opaque, black-background art.
-        launcher = (RES / "drawable/strato_mali_logo_separada_azul.png").read_bytes()
-        self.assertTrue(launcher.startswith(b"\x89PNG\r\n\x1a\n"))
-        launch_width, launch_height, launch_depth, launch_type, *_ = struct.unpack(">IIBBBBB", launcher[16:29])
-        self.assertEqual((launch_width, launch_height, launch_depth, launch_type), (1536, 1536, 8, 2))
+        # The launcher uses the user's glossy four-orb asset, kept opaque on
+        # black; the in-app header deliberately retains transparent RGBA PNG.
+        import hashlib
+        launcher = (RES / "drawable/strato_mali_launcher_exact.webp").read_bytes()
+        self.assertTrue(launcher.startswith(b"RIFF"))
+        self.assertEqual(launcher[8:12], b"WEBP")
+        self.assertEqual(hashlib.sha256(launcher).hexdigest(),
+                         "f7e4c3edf580645df18d3f1c158d65e08d1cb9feecce85e46f63b1608a9135bd")
         manifest = ET.parse(ROOT / "app/src/main/AndroidManifest.xml").getroot()
         app = manifest.find("application")
-        self.assertEqual(app.attrib[ANDROID + "icon"], "@drawable/strato_mali_logo_separada_azul")
-        self.assertEqual(app.attrib[ANDROID + "roundIcon"], "@drawable/strato_mali_logo_separada_azul")
+        self.assertEqual(app.attrib[ANDROID + "icon"], "@drawable/strato_mali_launcher_exact")
+        self.assertEqual(app.attrib[ANDROID + "roundIcon"], "@drawable/strato_mali_launcher_exact")
 
     def test_library_layout_changes_only_icon(self):
         layout = ROOT / "app/src/main/res/layout/main_activity.xml"
