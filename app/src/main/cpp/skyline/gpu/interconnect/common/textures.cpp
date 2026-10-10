@@ -271,10 +271,14 @@ namespace skyline::gpu::interconnect {
                 if (!nullTextureView)
                     nullTextureView = CreateNullTexture(ctx);
 
-                // Unsupported TIC formats cannot become valid without a TIC
-                // change. Cache the fallback for this pool slot so a game
-                // repeatedly referencing its invalid sentinel does not
-                // re-parse and log the same descriptor on every draw.
+                // Include the guest descriptor index: repeated 0x7FBFFFFF
+                // headers in Kirby may be a sentinel or an indexing bug.
+                // This log occurs only when the TIC changes, not per draw.
+                LOGW("Unsupported TIC descriptor index={} rawFormat=0x{:08X} type={} headerType={} iova=0x{:X}",
+                     index, textureHeader.formatWord.Raw(),
+                     static_cast<u32>(textureHeader.textureType),
+                     static_cast<u32>(textureHeader.headerType), textureHeader.Iova());
+                // Cache the fallback per slot to avoid repeated parsing/logs.
                 textureHeaderCache[index] = {textureHeader, nullTextureView.get(),
                                              ctx.channelCtx.channelSequenceNumber};
                 return nullTextureView.get();
