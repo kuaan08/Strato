@@ -17,7 +17,7 @@ class KirbyWscaleExperimentTests(unittest.TestCase):
         self.assertIn("kirby_packed_wscale_test.store(gpu.kirbyDiagnosticsEnabled", manager)
 
     def test_shared_flag_cross_translation_units(self):
-        settings = (SHADER / "include/shader_compiler/common/settings.h").read_text()
+        settings = (CPP.parent / "shader_compiler_overrides/shader_compiler/common/settings.h").read_text()
         self.assertIn("inline std::atomic<bool> kirby_packed_wscale_test{false}", settings)
         self.assertNotIn("static inline std::atomic<bool> kirby_packed_wscale_test", settings)
 
@@ -36,7 +36,8 @@ class KirbyWscaleExperimentTests(unittest.TestCase):
         patch = (ROOT / "experiments/kirby-wscale-ab1/shader-compiler.patch").read_text()
         workflow = (ROOT / ".github/workflows/strato-mali-build.yml").read_text()
         self.assertIn("frontend/maxwell/translate/impl/move_special_register.cpp", patch)
-        self.assertIn("a/common/settings.h", patch)
+        self.assertNotIn("a/common/settings.h", patch)
+        self.assertIn("kirby_packed_wscale_test", (CPP.parent / "shader_compiler_overrides/shader_compiler/common/settings.h").read_text())
         self.assertIn("git -C app/libraries/shader-compiler apply", workflow)
         self.assertLess(workflow.index("Apply isolated Kirby shader experiment"),
                         workflow.index("Validate isolated Kirby WScale experiment"))

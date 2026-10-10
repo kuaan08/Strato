@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <shader_compiler/common/common_types.h>
 
 namespace Shader::Settings {
@@ -24,4 +25,8 @@ namespace Shader::Settings {
 
     // One program-wide object: renderer, translation and optimization must agree.
     inline Values values{}; //!< A static structure with the values set by Skyline code
+
+    // The compiler includes this local override before submodule headers.
+    // Shared by the renderer and translator; disabled outside Kirby.
+    inline std::atomic<bool> kirby_packed_wscale_test{false};
 }
