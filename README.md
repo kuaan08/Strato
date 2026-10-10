@@ -1,6 +1,12 @@
 # Strato Mali
 
-**Strato Mali** is a private development fork of [Strato](https://github.com/strato-emu/strato) focused on Mali GPUs, Kbase/CSF and experimental Mesa PanVK support on Android.
+## 💬 Community / Telegram
+
+Join the **Strato Mali Telegram community** for development updates, compatibility discussions, testing feedback, and bug reports. 🫐
+
+👉 **[Join Strato Mali on Telegram](https://t.me/+XkmbXMK4c0BhMjZh)**
+
+**Strato Mali** is a public development fork of [Strato](https://github.com/strato-emu/strato) focused on Mali GPUs, Kbase/CSF and experimental Mesa PanVK support on Android.
 
 The development branch is based on Strato's protected `master` history at commit `ae1566a48285816a87e81d4aeb40bd2f4e56e60b` ("Fix accidental recursion with trap handling"). The upstream `jit` branch is preserved separately for later evaluation; it is not merged into the stable base by default.
 
