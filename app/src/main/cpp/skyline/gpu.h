@@ -61,6 +61,7 @@ namespace skyline::gpu {
         std::atomic<u32> kirbyTextureSamples{};
         std::atomic<u32> kirbyRenderTargetSamples{};
         std::atomic<u32> kirbyClearSamples{};
+        std::atomic<u32> kirbySlowPipelineSamples{};
 
         std::atomic<bool> storageImageShadersSeen{false};
         std::mutex storageFormatCacheMutex;

@@ -25,12 +25,21 @@ object GameContentUtils {
     }
 
     fun installed(context : Context, titleId : String) : List<File> =
-        directory(context, titleId).listFiles()?.filter { it.isFile && it.extension == "nsp" }?.sortedBy { it.name } ?: emptyList()
+        directory(context, titleId).listFiles()?.filter {
+            it.isFile && !java.nio.file.Files.isSymbolicLink(it.toPath()) &&
+                it.extension.equals("nsp", ignoreCase = true) && it.length() > 0L
+        }?.sortedBy { it.name } ?: emptyList()
 
     fun label(context : Context, file : File) : String =
         context.getSharedPreferences("game_content_labels", Context.MODE_PRIVATE).getString(file.name, null) ?: file.name
 
     fun remove(context : Context, file : File) {
+        val contentRoot = File(context.getPublicFilesDir(), "contents").canonicalFile
+        require(file.isFile && file.extension.equals("nsp", ignoreCase = true) &&
+                    !java.nio.file.Files.isSymbolicLink(file.toPath()) &&
+                    file.canonicalPath.startsWith(contentRoot.path + File.separator)) {
+            "Cannot remove a file outside installed game content"
+        }
         check(file.delete()) { "Could not remove installed content" }
         context.getSharedPreferences("game_content_labels", Context.MODE_PRIVATE).edit().remove(file.name).apply()
     }
@@ -70,7 +79,9 @@ object GameContentUtils {
                     output.fd.sync()
                 }
             } ?: error("Could not read the selected content file")
-            check(expected < 0 || copied == expected) { "The content file could not be copied completely" }
+            check(copied > 0 && temporary.length() == copied && (expected < 0 || copied == expected)) {
+                "The content file could not be copied completely"
+            }
             coroutineContext.ensureActive()
             progress(-1, expected)
             ParcelFileDescriptor.open(temporary, ParcelFileDescriptor.MODE_READ_ONLY).use { contentFd ->

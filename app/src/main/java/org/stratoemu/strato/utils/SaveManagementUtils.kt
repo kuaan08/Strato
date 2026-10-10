@@ -6,15 +6,12 @@
 package org.stratoemu.strato.utils
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.FragmentActivity
 import org.stratoemu.strato.R
 import org.stratoemu.strato.StratoApplication
@@ -26,11 +23,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import java.io.FilenameFilter
 import java.io.IOException
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -54,18 +48,42 @@ interface SaveManagementUtils {
             }
         }
 
-        fun registerStartForResultExportSave(context : Context) : ActivityResultLauncher<Intent> {
-            return (context as ComponentActivity).registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-                File(context.getPublicFilesDir().canonicalPath, "temp").deleteRecursively()
-            }
+        // ACTION_CREATE_DOCUMENT writes a real, durable ZIP directly to the
+        // destination selected by the user. Sharing a temporary archive and
+        // deleting it on the share-sheet callback could truncate exports.
+        fun registerStartForResultExportSave(context : Context) : ActivityResultLauncher<String> {
+            return (context as ComponentActivity).registerForActivityResult(
+                ActivityResultContracts.CreateDocument("application/zip")
+            ) { uri -> onExportDestinationSelected(context, uri) }
         }
 
-        fun registerStartForResultExportSave(fragmentAct : FragmentActivity) : ActivityResultLauncher<Intent> {
-            val activity = fragmentAct as AppCompatActivity
-            val activityResultRegistry = fragmentAct.activityResultRegistry
+        fun registerStartForResultExportSave(fragmentAct : FragmentActivity) : ActivityResultLauncher<String> {
+            return fragmentAct.activityResultRegistry.register(
+                "startForResultExportSaveKey",
+                ActivityResultContracts.CreateDocument("application/zip")
+            ) { uri -> onExportDestinationSelected(fragmentAct, uri) }
+        }
 
-            return activityResultRegistry.register("startForResultExportSaveKey", ActivityResultContracts.StartActivityForResult()) {
-                File(activity.getPublicFilesDir().canonicalPath, "temp").deleteRecursively()
+        private fun onExportDestinationSelected(context : Context, uri : Uri?) {
+            val prefs = context.getSharedPreferences("save_export_pending", Context.MODE_PRIVATE)
+            val gameId = prefs.getString("title_id", null)
+            prefs.edit().remove("title_id").apply()
+            if (uri == null || gameId == null) return // User cancelled the picker.
+            CoroutineScope(Dispatchers.IO).launch {
+                val result = try {
+                    val folder = if (gameId.isEmpty()) File(savesFolderRoot) else File(savesFolderRoot, gameId)
+                    require(folder.isDirectory) { "Save folder does not exist" }
+                    context.contentResolver.openOutputStream(uri, "w")?.use { output ->
+                        zipSave(folder, output)
+                    } ?: throw IOException("Could not create save ZIP at the selected location")
+                    true
+                } catch (e : Exception) {
+                    android.util.Log.e("StratoMali", "Save export failed", e)
+                    false
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, if (result) R.string.save_export_success else R.string.save_export_failed, Toast.LENGTH_LONG).show()
+                }
             }
         }
 
@@ -92,57 +110,49 @@ interface SaveManagementUtils {
         }
 
         /**
-         * Zips the save file located in the given folder path and creates a new zip file with the given name, and the current date and time.
-         * @param saveFolderPath The path to the folder containing the save file to zip.
-         * @param outputZipName The initial part of the name of the zip file to create.
-         * @return the zip file created.
+         * Export a save archive directly to the user-selected SAF document.
+         * Every entry stays inside the save root; symlinks are never followed.
+         * The top-level title ID is preserved for round-trip import.
          */
-        private fun zipSave(saveFolderPath : String, outputZipName : String) : File? {
-            try {
-                val tempFolder = File(StratoApplication.instance.getPublicFilesDir().canonicalPath, "temp")
-                tempFolder.mkdirs()
-
-                val saveFolder = File(saveFolderPath)
-                val outputZipFile = File(tempFolder, "$outputZipName - ${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}.zip")
-                outputZipFile.createNewFile()
-                ZipOutputStream(BufferedOutputStream(FileOutputStream(outputZipFile))).use { zos ->
-                    saveFolder.walkTopDown().forEach { file ->
-                        val zipFileName = file.absolutePath.removePrefix(savesFolderRoot).removePrefix("/")
-                        if (zipFileName == "") return@forEach
-                        val entry = ZipEntry("$zipFileName${(if (file.isDirectory) "/" else "")}")
-                        zos.putNextEntry(entry)
-                        if (file.isFile) file.inputStream().use { fis -> fis.copyTo(zos) }
+        private fun zipSave(saveFolder : File, output : java.io.OutputStream) {
+            val root = File(savesFolderRoot).canonicalFile
+            check(saveFolder.canonicalFile == root || saveFolder.canonicalPath.startsWith(root.path + File.separator))
+            var entries = 0
+            ZipOutputStream(BufferedOutputStream(output)).use { zip ->
+                saveFolder.walkTopDown().onEnter { !java.nio.file.Files.isSymbolicLink(it.toPath()) }
+                    .forEach { file ->
+                        if (java.nio.file.Files.isSymbolicLink(file.toPath())) return@forEach
+                        if (file == root) return@forEach
+                        require(file.canonicalPath.startsWith(root.path + File.separator)) { "Unsafe save path" }
+                        val name = file.relativeTo(root).invariantSeparatorsPath
+                        val entry = ZipEntry(name + if (file.isDirectory) "/" else "")
+                        zip.putNextEntry(entry)
+                        if (file.isFile) {
+                            file.inputStream().use { it.copyTo(zip) }
+                            entries++
+                        }
+                        zip.closeEntry()
                     }
-                }
-                return outputZipFile
-            } catch (e : Exception) {
-                return null
             }
+            check(entries > 0) { "No save data files to export" }
         }
 
         /**
-         * Exports the save file located in the given folder path by creating a zip file and sharing it via intent.
-         * @param titleId The title ID of the game to export the save file of. If empty, export all save files.
-         * @param outputZipName The initial part of the name of the zip file to create.
+         * Open Android's Save As dialog instead of sharing a temporary ZIP.
+         * The selected title ID survives Activity recreation while the picker is open.
          */
-        fun exportSave(context : Context, startForResultExportSave : ActivityResultLauncher<Intent>, titleId : String?, outputZipName : String) {
-            if (titleId == null) return
-            CoroutineScope(Dispatchers.IO).launch {
-                val saveFolderPath = "$savesFolderRoot/$titleId"
-                val zipCreated = zipSave(saveFolderPath, outputZipName)
-                if (zipCreated == null) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, R.string.error, Toast.LENGTH_LONG).show()
-                    }
-                    return@launch
-                }
-
-                withContext(Dispatchers.Main) {
-                    val file = DocumentFile.fromSingleUri(context, DocumentsContract.buildDocumentUri(DocumentsProvider.AUTHORITY, "${DocumentsProvider.ROOT_ID}/temp/${zipCreated.name}"))!!
-                    val intent = Intent(Intent.ACTION_SEND).setDataAndType(file.uri, "application/zip").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).putExtra(Intent.EXTRA_STREAM, file.uri)
-                    startForResultExportSave.launch(Intent.createChooser(intent, context.getString(R.string.save_file_share)))
-                }
+        fun exportSave(context : Context, startForResultExportSave : ActivityResultLauncher<String>, titleId : String?, outputZipName : String) {
+            if (titleId == null || (titleId.isNotEmpty() && !titleId.matches(Regex("[0-9A-Fa-f]{16}")))) return
+            val folder = if (titleId.isEmpty()) File(savesFolderRoot) else File(savesFolderRoot, titleId)
+            if (!folder.isDirectory) {
+                Toast.makeText(context, R.string.save_export_failed, Toast.LENGTH_LONG).show()
+                return
             }
+            val safeName = outputZipName.replace(Regex("[\\\\/:*?\"<>|\\n\\r]"), "_").take(120).trim()
+            val name = (safeName.ifBlank { "Strato Mali Saves" }) + ".zip"
+            context.getSharedPreferences("save_export_pending", Context.MODE_PRIVATE).edit()
+                .putString("title_id", titleId).commit()
+            startForResultExportSave.launch(name)
         }
 
         /**

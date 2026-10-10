@@ -84,9 +84,25 @@ namespace skyline::loader::content {
         std::vector<Package> packages;
         for (const auto &path : paths) {
             int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-            if (fd < 0) throw exception("Cannot read installed game content");
-            packages.emplace_back(std::make_shared<vfs::OsBacking>(fd, true), keys, loader.programId);
+            if (fd < 0) {
+                LOGW("Skipping unreadable installed Update/DLC: {}", path.filename().string());
+                continue;
+            }
+            try {
+                packages.emplace_back(std::make_shared<vfs::OsBacking>(fd, true), keys, loader.programId);
+            } catch (const std::exception &error) {
+                // An installed NSP might have been corrupted after its initial
+                // validation. Never prevent a valid base game from booting.
+                LOGW("Skipping invalid Update/DLC {}: {}", path.filename().string(), error.what());
+            }
         }
-        if (!packages.empty()) Apply(loader, packages, keys);
+        if (!packages.empty()) {
+            try {
+                Apply(loader, packages, keys);
+            } catch (const std::exception &error) {
+                // Apply commits loader state only after validation succeeds.
+                LOGW("Cannot apply installed content; starting base game: {}", error.what());
+            }
+        }
     }
 }

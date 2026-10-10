@@ -3,6 +3,7 @@
 // Copyright © 2022 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include <fstream>
+#include <chrono>
 #include <gpu/texture/texture.h>
 #include <gpu/interconnect/command_executor.h>
 #include <gpu/interconnect/common/pipeline.inc>
@@ -1091,10 +1092,19 @@ namespace skyline::gpu::interconnect::maxwell3d {
         if (it != map.end())
             return it->second.get();
 
+        // Measure expensive shader/pipeline misses only for Kirby. This
+        // distinguishes first-run compilation stalls from driver GPU stalls.
+        const auto start{ctx.gpu.kirbyDiagnosticsEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}};
         auto bundle{std::make_unique<PipelineStateBundle>()};
         bundle->Reset(packedState);
         auto accessor{RuntimeGraphicsPipelineStateAccessor{std::move(bundle), ctx, textures, constantBuffers, shaderBinaries}};
         auto *pipeline{map.emplace(packedState, std::make_unique<Pipeline>(ctx.gpu, accessor, packedState)).first->second.get()};
+        if (ctx.gpu.kirbyDiagnosticsEnabled) {
+            const auto elapsedMs{std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count()};
+            if (elapsedMs >= 40 && ctx.gpu.kirbySlowPipelineSamples.fetch_add(1, std::memory_order_relaxed) < 64)
+                LOGW("KIRBY_PERF graphics pipeline compilation took {} ms; fragmentShader=0x{:016X}",
+                     elapsedMs, packedState.shaderHashes[5]);
+        }
 
         #ifdef PIPELINE_STATS
         auto sharedIt{sharedPipelines.find(pipeline->sourcePackedState.shaderHashes)};

@@ -63,7 +63,7 @@ class AppDialog : BottomSheetDialogFragment() {
      * Used to manage save files
      */
     private lateinit var documentPicker : ActivityResultLauncher<Array<String>>
-    private lateinit var startForResultExportSave : ActivityResultLauncher<Intent>
+    private lateinit var startForResultExportSave : ActivityResultLauncher<String>
     private var installingContent = false
     private val contentPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) installContent(uri)

@@ -6,7 +6,6 @@
 package org.stratoemu.strato.preference
 
 import android.content.Context
-import android.content.Intent
 import android.util.AttributeSet
 import androidx.activity.result.ActivityResultLauncher
 import androidx.preference.Preference
