@@ -221,6 +221,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
         u8 transitionCacheNextIdx{}; //!< The next index to insert into the transition cache
         u8 stageMask{}; //!< Bitmask of active shader stages
         u16 sampledImageCount{};
+        bool writableStorageImages{}; //!< Calculated once per pipeline, not per draw
 
         std::array<Pipeline *, 6> transitionCache{};
 

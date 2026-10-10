@@ -55,7 +55,16 @@ class StorageImageBindingTests(unittest.TestCase):
 
     def test_writes_and_barriers_do_not_touch_other_games(self):
         texture = source("texture/texture.cpp")
-        self.assertIn("FormatFeatureFlagBits::eStorageImage", texture)
+        self.assertIn("gpu.storageImageShadersSeen.load(std::memory_order_relaxed)", texture)
+        self.assertIn("gpu.SupportsStorageImageFormat(format->vkFormat)", texture)
+        gpu = (GPU.parents[0] / "gpu.h").read_text()
+        self.assertIn("storageFormatSupportCache", gpu)
+        graphics = source("interconnect/maxwell_3d/pipeline_manager.cpp")
+        compute = source("interconnect/kepler_compute/pipeline_manager.cpp")
+        self.assertIn("gpu.storageImageShadersSeen.store(true", graphics)
+        self.assertIn("ctx.gpu.storageImageShadersSeen.store(true", compute)
+        textures = source("interconnect/common/textures.cpp")
+        self.assertIn("textureHeaderCache[index] = {textureHeader, nullTextureView.get()", textures)
         self.assertIn("RecordStorageWrite", texture)
         self.assertIn("pendingStorageWriteStages", texture)
         draws = source("interconnect/maxwell_3d/maxwell_3d.cpp")

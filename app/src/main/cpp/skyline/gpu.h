@@ -5,6 +5,7 @@
 
 #include <adrenotools/driver.h>
 #include <atomic>
+#include <unordered_map>
 #include "gpu/trait_manager.h"
 #include "gpu/resolution_scaling.h"
 #include "gpu/memory_manager.h"
@@ -47,6 +48,25 @@ namespace skyline::gpu {
         vk::raii::Device vkDevice;
         std::mutex queueMutex; //!< Synchronizes access to the queue as it is externally synchronized
         vk::raii::Queue vkQueue; //!< A Vulkan Queue supporting graphics and compute operations
+
+        // Most Switch games use sampled/attachment images only. Adding STORAGE
+        // to every guest texture disables important Mali tiling/compression
+        // optimizations. Enable it only after encountering a shader that needs
+        // storage images, and cache host-format support per GPU session.
+        std::atomic<bool> storageImageShadersSeen{false};
+        std::mutex storageFormatCacheMutex;
+        std::unordered_map<u32, bool> storageFormatSupportCache;
+
+        bool SupportsStorageImageFormat(vk::Format format) {
+            std::lock_guard lock{storageFormatCacheMutex};
+            const auto key{static_cast<u32>(format)};
+            if (auto it{storageFormatSupportCache.find(key)}; it != storageFormatSupportCache.end())
+                return it->second;
+            const bool supported{bool(vkPhysicalDevice.getFormatProperties(format).optimalTilingFeatures &
+                                      vk::FormatFeatureFlagBits::eStorageImage)};
+            storageFormatSupportCache.emplace(key, supported);
+            return supported;
+        }
 
         const resolution::Scale resolutionScale; //!< Fixed for this emulation session
         std::atomic<bool> resolutionQueriesSeen{}; //!< Precise pixel counters require native rasterization

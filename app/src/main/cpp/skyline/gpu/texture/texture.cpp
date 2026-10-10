@@ -694,10 +694,12 @@ namespace skyline::gpu {
           usage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled) {
         if ((format->vkAspect & vk::ImageAspectFlagBits::eColor) && !format->IsCompressed()) {
             usage |= vk::ImageUsageFlagBits::eColorAttachment;
-            // Storage images use the same guest texture cache as sampled images.
-            // Only request storage usage for formats that the host can actually write.
-            const auto features{gpu.vkPhysicalDevice.getFormatProperties(format->vkFormat).optimalTilingFeatures};
-            if (features & vk::FormatFeatureFlagBits::eStorageImage)
+            // A storage-capable VkImage may prevent Mali framebuffer
+            // compression and fast tiling even when no storage access occurs.
+            // Preserve the original sampled/attachment usage for games that
+            // never request storage images.
+            if (gpu.storageImageShadersSeen.load(std::memory_order_relaxed) &&
+                gpu.SupportsStorageImageFormat(format->vkFormat))
                 usage |= vk::ImageUsageFlagBits::eStorage;
         }
         if (format->vkAspect & (vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil))

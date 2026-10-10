@@ -252,6 +252,8 @@ namespace skyline::gpu::interconnect::maxwell3d {
             imageBits += program.info.image_descriptors.size();
             usesRenderArea |= program.info.uses_render_area;
         }
+        if (imageBits)
+            gpu.storageImageShadersSeen.store(true, std::memory_order_relaxed);
         if (enableResolutionScaling && !gpu.resolutionScale.IsNative() && (textureBits > 128 || imageBits > 64 || usesRenderArea)) {
             LOGW("Native resolution pipeline: scaling ABI limit (textures={}, images={}, renderArea={})", textureBits, imageBits, usesRenderArea);
             return MakePipelineShaders(gpu, accessor, packedState, false);
@@ -709,6 +711,9 @@ namespace skyline::gpu::interconnect::maxwell3d {
                 supportsResolutionScaling = false;
         }
         descriptorInfo = MakePipelineDescriptorInfo(shaderStages, gpu.traits.quirks.needsIndividualTextureBindingWrites);
+        for (const auto &stage : descriptorInfo.stages)
+            for (const auto &image : stage.storageImageDescs)
+                writableStorageImages |= image.is_written;
         compiledPipeline = MakeCompiledPipeline(gpu, sourcePackedState, shaderStages, descriptorInfo.descriptorSetLayoutBindings);
 
         for (u32 i{}; i < engine::ShaderStageCount; i++)
@@ -775,11 +780,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
     }
 
     bool Pipeline::HasWritableStorageImages() const {
-        for (const auto &stage : descriptorInfo.stages)
-            for (const auto &image : stage.storageImageDescs)
-                if (image.is_written)
-                    return true;
-        return false;
+        return writableStorageImages;
     }
 
     DescriptorUpdateInfo *Pipeline::SyncDescriptors(InterconnectContext &ctx, ConstantBufferSet &constantBuffers, Samplers &samplers, Textures &textures, span<TextureView *> sampledImages, vk::PipelineStageFlags &srcStageMask, vk::PipelineStageFlags &dstStageMask) {

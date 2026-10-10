@@ -134,8 +134,7 @@ namespace skyline::gpu::interconnect {
             (guestTexture->format->IsCompatible(*requestedFormat) &&
              (guestTexture->format == requestedFormat ||
               bool(guestTexture->flags & vk::ImageCreateFlagBits::eMutableFormat)) &&
-             bool(ctx.gpu.vkPhysicalDevice.getFormatProperties(requestedFormat->vkFormat).optimalTilingFeatures &
-                  vk::FormatFeatureFlagBits::eStorageImage))};
+             ctx.gpu.SupportsStorageImageFormat(requestedFormat->vkFormat))};
 
         TextureView *view{};
         if (storageUsage && formatCompatible && guestTexture->layout == vk::ImageLayout::eGeneral) {
@@ -148,6 +147,14 @@ namespace skyline::gpu::interconnect {
         } else {
             // Invalid/unmapped TICs must never become unbound Vulkan
             // descriptors. Use a storage-capable, dimension-matched dummy.
+            // Keep diagnostics bounded: this runs in a hot draw/dispatch path.
+            static std::atomic<u32> fallbackReports{};
+            if (fallbackReports.fetch_add(1, std::memory_order_relaxed) < 12) {
+                LOGW("Storage image fallback: TIC={} shaderFmt={} hostFmt={} storageUsage={} compatible={} layout={}",
+                     handle.textureIndex, static_cast<u32>(desc.format),
+                     static_cast<u32>(guestTexture->format->vkFormat), storageUsage,
+                     formatCompatible, static_cast<u32>(guestTexture->layout));
+            }
             view = textures.GetNullStorageTexture(ctx, desc.type, desc.format);
         }
 

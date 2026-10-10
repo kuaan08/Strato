@@ -23,6 +23,9 @@ namespace skyline::gpu::interconnect::kepler_compute {
                 return textures.GetTextureType(ctx, BindlessHandle{ .raw = index }.textureIndex);
             })};
 
+        if (!program.info.image_descriptors.empty())
+            ctx.gpu.storageImageShadersSeen.store(true, std::memory_order_relaxed);
+
         Shader::Backend::Bindings bindings{};
 
         return {ctx.gpu.shader->CompileShader({}, program, bindings, packedState.shaderHash), program.info};

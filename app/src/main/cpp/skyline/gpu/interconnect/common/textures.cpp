@@ -271,6 +271,12 @@ namespace skyline::gpu::interconnect {
                 if (!nullTextureView)
                     nullTextureView = CreateNullTexture(ctx);
 
+                // Unsupported TIC formats cannot become valid without a TIC
+                // change. Cache the fallback for this pool slot so a game
+                // repeatedly referencing its invalid sentinel does not
+                // re-parse and log the same descriptor on every draw.
+                textureHeaderCache[index] = {textureHeader, nullTextureView.get(),
+                                             ctx.channelCtx.channelSequenceNumber};
                 return nullTextureView.get();
             }
 
@@ -373,8 +379,7 @@ namespace skyline::gpu::interconnect {
         // Vulkan storage descriptors must reference a storage-capable image.
         // Refuse to create an invalid VkImage even for missing guest textures.
         const auto supportsStorage{[&](texture::Format candidate) {
-            return bool(ctx.gpu.vkPhysicalDevice.getFormatProperties(candidate->vkFormat).optimalTilingFeatures &
-                        vk::FormatFeatureFlagBits::eStorageImage);
+            return ctx.gpu.SupportsStorageImageFormat(candidate->vkFormat);
         }};
         if (!supportsStorage(hostFormat)) {
             LOGW("Storage image dummy format {} is unsupported by the driver, using R32Uint", vk::to_string(hostFormat->vkFormat));
