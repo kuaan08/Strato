@@ -72,6 +72,9 @@ jobs:
       - name: Validate Vulkan storage image descriptor wiring
         run: python3 tests/test_storage_image_bindings.py
 
+      - name: Validate Ko-fi welcome dialog and setup isolation
+        run: python3 tests/test_kofi_startup.py
+
       - name: Validate Kirby-only GPU diagnostics
         run: python3 tests/test_kirby_diagnostics.py
 
