@@ -115,6 +115,20 @@ int main(){
  rejects([&]{vfs::BktrBacking x(nullptr,patch,patch,rh,sh,{},{},0,false);});
  auto small=std::make_shared<vfs::Memory>(std::vector<u8>(5));rejects([&]{vfs::BktrBacking x(small,patch,patch,rh,sh,{},{},0,false);});
  auto invalidHeader=rh;invalidHeader.size=UINT64_MAX;rejects([&]{vfs::BktrBacking x(base,patch,patch,invalidHeader,sh,{},{},0,false);});
+ // A terminal subsection sentinel at the patch-data/relocation boundary is
+ // valid. A larger value still describes bytes inside the BKTR metadata.
+ auto terminalSub=table(false,0x8010,{{0,0,1},{4,0,2},{16,0,3}});
+ std::vector<u8> terminalRaw(raw);
+ std::memcpy(terminalRaw.data()+0x8010,terminalSub.data(),terminalSub.size());
+ auto terminalBacking=std::make_shared<vfs::Memory>(terminalRaw);
+ auto terminalHeader=sh;terminalHeader.entries=3;
+ vfs::BktrBacking terminal(base,terminalBacking,terminalBacking,rh,terminalHeader,{},{},0,false);
+ std::vector<u8> terminalRead(expected.size());
+ assert(terminal.ReadUnchecked(terminalRead,0)==terminalRead.size() && terminalRead==expected);
+ auto pastSub=table(false,0x8010,{{0,0,1},{4,0,2},{17,0,3}});
+ std::memcpy(terminalRaw.data()+0x8010,pastSub.data(),pastSub.size());
+ auto pastBacking=std::make_shared<vfs::Memory>(terminalRaw);
+ rejects([&]{vfs::BktrBacking x(base,pastBacking,pastBacking,rh,terminalHeader,{},{},0,false);});
  // Repeated invalid input must throw rather than trigger sanitizer failures.
  for(size_t len=0;len<cnmt.size();++len){auto truncated=cnmt;truncated.resize(len);rejects([&]{loader::content::ParseMetadata(truncated,game);});}
  std::cout<<"PASS: content ownership, CNMT bounds, BKTR validation and cross-boundary reads\n";
