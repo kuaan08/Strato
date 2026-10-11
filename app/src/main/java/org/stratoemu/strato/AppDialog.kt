@@ -72,6 +72,9 @@ class AppDialog : BottomSheetDialogFragment() {
     private val modPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) installMod(uri)
     }
+    private val modFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) installMod(uri, true)
+    }
 
     private fun refreshContent() {
         val files = item.titleId?.let { GameContentUtils.installed(requireContext(), it) } ?: emptyList()
@@ -152,13 +155,15 @@ class AppDialog : BottomSheetDialogFragment() {
         binding.manageMods.isEnabled = mods.isNotEmpty()
     }
 
-    private fun installMod(uri: android.net.Uri) {
+    private fun installMod(uri: android.net.Uri, folder: Boolean = false) {
         val titleId = item.titleId ?: return
         val context = requireContext().applicationContext
         binding.installMod.isEnabled = false
+        binding.installModZip.isEnabled = false
         lifecycleScope.launch {
             try {
-                GameModUtils.install(context, titleId, uri)
+                if (folder) GameModUtils.installFolder(context, titleId, uri)
+                else GameModUtils.install(context, titleId, uri)
                 if (isAdded && view != null) Snackbar.make(binding.root, R.string.game_mods_imported, Snackbar.LENGTH_LONG).show()
             } catch (e : Exception) {
                 if (isAdded && view != null) AlertDialog.Builder(requireContext())
@@ -167,6 +172,7 @@ class AppDialog : BottomSheetDialogFragment() {
             } finally {
                 if (isAdded && view != null) {
                     binding.installMod.isEnabled = true
+                    binding.installModZip.isEnabled = true
                     refreshMods()
                 }
             }
@@ -294,7 +300,9 @@ class AppDialog : BottomSheetDialogFragment() {
         binding.installContent.isEnabled = item.loaderResult == LoaderResult.Success && (item.format == RomFormat.NSP || item.format == RomFormat.XCI)
         binding.installContent.setOnClickListener { contentPicker.launch(arrayOf("*/*")) }
         binding.installMod.isEnabled = item.titleId?.matches(Regex("[0-9a-fA-F]{16}")) == true
-        binding.installMod.setOnClickListener { modPicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }
+        binding.installMod.setOnClickListener { modFolderPicker.launch(null) }
+        binding.installModZip.isEnabled = binding.installMod.isEnabled
+        binding.installModZip.setOnClickListener { modPicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }
         binding.manageMods.setOnClickListener { manageMods() }
         refreshMods()
         refreshContent()

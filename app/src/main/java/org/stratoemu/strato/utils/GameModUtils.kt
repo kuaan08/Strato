@@ -4,6 +4,7 @@ package org.stratoemu.strato.utils
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.stratoemu.strato.getPublicFilesDir
@@ -48,6 +49,117 @@ object GameModUtils {
             !java.nio.file.Files.isSymbolicLink(dir.toPath())) { "Invalid mod location" }
         check(dir.deleteRecursively()) { "Could not delete mod" }
     }
+
+    /**
+     * Eden-style folder picker. The selected SAF directory can be either:
+     * - a named mod folder containing romfs/, exefs/ and/or cheats/
+     * - one of the romfs/, exefs/ or cheats/ folders directly
+     * - a single wrapper folder containing the mod folder
+     * No ZIP archive is needed; copy to local app storage for the native loader.
+     */
+    suspend fun installFolder(context: Context, titleId: String, treeUri: Uri): String =
+        withContext(Dispatchers.IO) {
+            val selected = DocumentFile.fromTreeUri(context, treeUri)
+                ?: error("Could not open selected folder")
+            require(selected.isDirectory) { "Please select a mod folder" }
+
+            val types = setOf("romfs", "exefs", "cheats")
+            fun children(folder: DocumentFile) = folder.listFiles().toList()
+            fun hasModFolders(folder: DocumentFile) =
+                children(folder).any { it.isDirectory && it.name?.lowercase() in types }
+            val selectedName = selected.name ?: "Imported Mod"
+
+            val actualRoot: DocumentFile
+            val rootIsType: Boolean
+            if (selectedName.lowercase() in types) {
+                actualRoot = selected
+                rootIsType = true
+            } else if (hasModFolders(selected)) {
+                actualRoot = selected
+                rootIsType = false
+            } else {
+                val candidates = children(selected).filter { it.isDirectory && hasModFolders(it) }
+                require(candidates.size == 1) {
+                    "Select a mod folder containing romfs, exefs or cheats (not a parent of multiple mods)"
+                }
+                actualRoot = candidates.single()
+                rootIsType = false
+            }
+
+            val base = root(context, titleId)
+            check(base.mkdirs() || base.isDirectory) { "Could not create mod directory" }
+            val originalName = if (rootIsType) selectedName + " Mod" else (actualRoot.name ?: "Imported Mod")
+            val safeName = originalName.replace(unsafePart, "_").trim().trim('.').take(96)
+            require(safeName.isNotEmpty()) { "Invalid mod folder name" }
+            val destination = File(base, safeName)
+            check(!destination.exists()) { "Mod already installed: $safeName" }
+
+            val staging = File(base, ".install-" + UUID.randomUUID())
+            check(staging.mkdir()) { "Could not prepare mod installation" }
+            var fileCount = 0
+            var byteCount = 0L
+            val maximumBytes = 1024L * 1024L * 1024L
+            val maxFiles = 8000
+
+            fun copyDirectory(source: DocumentFile, dest: File, depth: Int) {
+                require(depth <= 24) { "Mod folder is too deeply nested" }
+                val files = children(source)
+                require(files.size <= maxFiles) { "Mod folder contains too many entries" }
+                for (doc in files) {
+                    val name = doc.name ?: error("Unnamed file inside mod folder")
+                    require(name.isNotEmpty() && name !in listOf(".", "..") &&
+                        name.length <= 128 && !name.contains('/') && !name.contains('\\') &&
+                        !name.contains(':') && !name.contains('\u0000')) { "Unsafe mod file name" }
+                    val output = File(dest, name)
+                    require(output.canonicalPath.startsWith(staging.canonicalPath + File.separator)) {
+                        "Unsafe mod path"
+                    }
+                    if (doc.isDirectory) {
+                        check(output.mkdirs() || output.isDirectory) { "Could not create mod directory" }
+                        copyDirectory(doc, output, depth + 1)
+                    } else if (doc.isFile) {
+                        fileCount++
+                        require(fileCount <= maxFiles) { "Mod contains too many files" }
+                        check(!output.exists()) { "Duplicate mod file" }
+                        context.contentResolver.openInputStream(doc.uri)?.use { input ->
+                            FileOutputStream(output).use { destStream ->
+                                val buffer = ByteArray(65536)
+                                while (true) {
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    if (count == 0) continue
+                                    byteCount += count
+                                    require(byteCount <= maximumBytes) { "Mod exceeds 1 GB" }
+                                    destStream.write(buffer, 0, count)
+                                }
+                                destStream.fd.sync()
+                            }
+                        } ?: error("Could not read selected mod file: $name")
+                    }
+                }
+            }
+
+            try {
+                if (rootIsType) {
+                    val dest = File(staging, selectedName.lowercase())
+                    check(dest.mkdir()) { "Could not create mod folder" }
+                    copyDirectory(actualRoot, dest, 0)
+                } else {
+                    for (child in children(actualRoot)) {
+                        val type = child.name?.lowercase()
+                        if (!child.isDirectory || type !in types) continue
+                        val dest = File(staging, type)
+                        check(dest.mkdir()) { "Duplicate mod folder: $type" }
+                        copyDirectory(child, dest, 0)
+                    }
+                }
+                require(fileCount > 0) { "Selected folder contains no mod files" }
+                check(staging.renameTo(destination)) { "Could not complete mod installation" }
+                safeName
+            } finally {
+                if (staging.exists()) staging.deleteRecursively()
+            }
+        }
 
     suspend fun install(context: Context, titleId: String, uri: Uri): String = withContext(Dispatchers.IO) {
         val base = root(context, titleId)

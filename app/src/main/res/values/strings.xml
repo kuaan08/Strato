@@ -322,10 +322,12 @@
     <string name="game_crash_message">A fatal error occurred. Check the log for details.</string>
     <string name="game_content">Dlc/Update</string>
     <string name="game_mods">Cheats / Mods</string>
-    <string name="game_mods_install">Install ZIP</string>
+    <string name="game_mods_install">Select folder</string>
+    <string name="game_mods_install_zip">Import ZIP</string>
+    <string name="game_mods_manage_short">Manage</string>
     <string name="game_mods_manage">Manage Cheats / Mods</string>
     <string name="game_mods_count">%1$d installed mod(s)</string>
-    <string name="game_mods_empty">No mods installed. Import a ZIP containing romfs, exefs, or cheats folders.</string>
+    <string name="game_mods_empty">No mods installed. Select a mod folder containing romfs, exefs, or cheats (ZIP optional).</string>
     <string name="game_mods_fail">Could not install mod</string>
     <string name="game_mods_remove">Delete mod</string>
     <string name="game_mods_imported">Mod imported. Restart the game to apply enabled mods.</string>

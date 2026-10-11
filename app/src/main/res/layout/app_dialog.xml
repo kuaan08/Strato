@@ -259,7 +259,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             app:alignItems="center"
-            app:flexWrap="nowrap"
+            app:flexWrap="wrap"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toBottomOf="@id/game_mods_heading">
@@ -273,12 +273,20 @@
                 app:icon="@drawable/ic_add" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/install_mod_zip"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/game_mods_install_zip" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/manage_mods"
                 style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:text="@string/game_mods_manage" />
+                android:text="@string/game_mods_manage_short" />
         </com.google.android.flexbox.FlexboxLayout>
 
         <TextView
