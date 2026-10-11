@@ -5,6 +5,7 @@
 
 #include <linux/elf.h>
 #include <map>
+#include <filesystem>
 #include <vfs/filesystem.h>
 #include <vfs/nacp.h>
 #include <common/signal.h>
@@ -98,6 +99,7 @@ namespace skyline::loader {
         u64 programId{};
         std::shared_ptr<vfs::Backing> baseRomFsSection;
         std::shared_ptr<vfs::FileSystem> installedExeFs;
+        std::map<std::string, std::filesystem::path> modExeFsOverrides;
         std::map<u64, std::shared_ptr<vfs::Backing>> addOnContent;
 
         virtual ~Loader() = default;

@@ -12,6 +12,7 @@
 #include "loader/nsp.h"
 #include "loader/xci.h"
 #include "loader/installed_content.h"
+#include "loader/mod_content.h"
 #include "os.h"
 
 namespace skyline::kernel {
@@ -53,6 +54,7 @@ namespace skyline::kernel {
         }();
 
         loader::content::LoadInstalled(*state.loader, publicAppFilesPath, keyStore);
+        loader::mods::LoadMods(*state.loader, publicAppFilesPath);
 
         state.gpu->Initialise();
 

@@ -5,6 +5,7 @@
 #include <vfs/npdm.h>
 #include "nso.h"
 #include "nca.h"
+#include "mod_content.h"
 
 namespace skyline::loader {
     NcaLoader::NcaLoader(std::shared_ptr<vfs::Backing> backing, std::shared_ptr<crypto::KeyStore> keyStore) : nca(std::move(backing), std::move(keyStore)) {
@@ -47,7 +48,10 @@ namespace skyline::loader {
     }
 
     void *NcaLoader::LoadProcessData(const std::shared_ptr<kernel::type::KProcess> &process, const DeviceState &state) {
-        process->npdm = vfs::NPDM(nca.exeFs->OpenFile("main.npdm"));
-        return LoadExeFs(this, nca.exeFs, process, state);
+        std::shared_ptr<vfs::FileSystem> exefs = nca.exeFs;
+        if (!modExeFsOverrides.empty())
+            exefs = std::make_shared<mods::ExeFsOverlay>(exefs, modExeFsOverrides);
+        process->npdm = vfs::NPDM(exefs->OpenFile("main.npdm"));
+        return LoadExeFs(this, exefs, process, state);
     }
 }
