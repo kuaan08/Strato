@@ -5,6 +5,7 @@
 #include <kernel/types/KProcess.h>
 #include <vfs/region_backing.h>
 #include "nca.h"
+#include "mod_content.h"
 #include "xci.h"
 
 namespace skyline::loader {
@@ -66,7 +67,9 @@ namespace skyline::loader {
     }
 
     void *XciLoader::LoadProcessData(const std::shared_ptr<kernel::type::KProcess> &process, const DeviceState &state) {
-        auto exefs = installedExeFs ? installedExeFs : programNca->exeFs;
+        std::shared_ptr<vfs::FileSystem> exefs = installedExeFs ? installedExeFs : programNca->exeFs;
+        if (!modExeFsOverrides.empty())
+            exefs = std::make_shared<mods::ExeFsOverlay>(exefs, modExeFsOverrides);
         process->npdm = vfs::NPDM(exefs->OpenFile("main.npdm"));
         return NcaLoader::LoadExeFs(this, exefs, process, state);
     }

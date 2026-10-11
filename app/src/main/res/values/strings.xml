@@ -321,6 +321,20 @@
     <string name="game_crash">The game has crashed</string>
     <string name="game_crash_message">A fatal error occurred. Check the log for details.</string>
     <string name="game_content">Dlc/Update</string>
+    <string name="game_mods">Cheats / Mods</string>
+    <string name="game_mods_install">Select folder</string>
+    <string name="game_mods_install_zip">Import ZIP</string>
+    <string name="game_mods_manage_short">Manage</string>
+    <string name="game_mods_manage">Manage Cheats / Mods</string>
+    <string name="game_mods_count">%1$d installed mod(s)</string>
+    <string name="game_mods_empty">No mods installed. Select a mod folder containing romfs, exefs, or cheats (ZIP optional).</string>
+    <string name="game_mods_fail">Could not install mod</string>
+    <string name="game_mods_remove">Delete mod</string>
+    <string name="game_mods_imported">Mod imported. Restart the game to apply enabled mods.</string>
+    <string name="game_mods_notes">ExeFS and RomFS replacements are supported. Cheat files can be managed, but code execution requires a compatible cheat engine.</string>
+    <string name="game_content_batch_summary">Installed: %1$d, already present: %2$d, failed: %3$d</string>
+    <string name="game_content_batch_failed">Some packages could not be installed</string>
+
     <string name="game_content_install">Install</string>
     <string name="game_content_manage">Manage installed DLC/Updates</string>
     <string name="game_content_remove">Remove this DLC/Update?</string>

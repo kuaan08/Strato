@@ -55,8 +55,16 @@ namespace skyline::vfs {
             relocations = parse(relocation, true);
             subsections = parse(subsection, false);
             patch::Require(subsections.size == subsection.offset, "Invalid BKTR subsection limit");
-            // Only data before the relocation table uses subsection-specific counters.
-            patch::Require(subsections.entries.back().offset < relocation.offset, "Invalid BKTR data limit");
+            // The relocation table begins at the end of the patch data. Some
+            // subsection tables explicitly contain that terminal boundary;
+            // it is a valid zero-length sentinel, not another data region.
+            // Keep rejecting entries past the boundary (corruption), and
+            // never make the sentinel addressable by patch reads.
+            if (subsections.entries.back().offset > relocation.offset)
+                throw std::runtime_error(
+                    "Invalid BKTR data limit (last subsection=" +
+                    std::to_string(subsections.entries.back().offset) +
+                    ", patch data end=" + std::to_string(relocation.offset) + ")");
             subsections.size = relocation.offset;
             size = relocations.size;
             for (size_t i{}; i < relocations.entries.size(); ++i) {

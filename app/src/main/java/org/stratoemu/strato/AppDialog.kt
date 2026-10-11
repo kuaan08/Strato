@@ -29,6 +29,7 @@ import org.stratoemu.strato.loader.LoaderResult
 import org.stratoemu.strato.settings.SettingsActivity
 import org.stratoemu.strato.utils.SaveManagementUtils
 import org.stratoemu.strato.utils.GameContentUtils
+import org.stratoemu.strato.utils.GameModUtils
 import org.stratoemu.strato.loader.RomFormat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -65,8 +66,14 @@ class AppDialog : BottomSheetDialogFragment() {
     private lateinit var documentPicker : ActivityResultLauncher<Array<String>>
     private lateinit var startForResultExportSave : ActivityResultLauncher<String>
     private var installingContent = false
-    private val contentPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) installContent(uri)
+    private val contentPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) installContent(uris.distinct())
+    }
+    private val modPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) installMod(uri)
+    }
+    private val modFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) installMod(uri, true)
     }
 
     private fun refreshContent() {
@@ -75,7 +82,7 @@ class AppDialog : BottomSheetDialogFragment() {
         binding.manageContent.isEnabled = files.isNotEmpty() && !installingContent
     }
 
-    private fun installContent(uri : android.net.Uri) {
+    private fun installContent(uris : List<android.net.Uri>) {
         if (installingContent) return
         val titleId = item.titleId ?: return
         val context = requireContext().applicationContext
@@ -96,19 +103,36 @@ class AppDialog : BottomSheetDialogFragment() {
         dialog.show()
         lifecycleScope.launch {
             try {
-                var lastUpdate = 0L
-                val installed = GameContentUtils.install(context, item.uri, titleId, uri) { copied, total ->
-                    val now = android.os.SystemClock.elapsedRealtime()
-                    if (copied < 0 || now - lastUpdate >= 150) {
-                        lastUpdate = now
-                        progress.post {
-                            text.setText(if (copied < 0) R.string.game_content_verifying else R.string.game_content_copying)
-                            progress.isIndeterminate = total <= 0 || copied < 0
-                            if (copied >= 0 && total > 0) progress.progress = (copied.toDouble() * 100 / total).toInt().coerceIn(0, 100)
+                var installedCount = 0
+                var existingCount = 0
+                val failures = mutableListOf<String>()
+                for ((index, uri) in uris.withIndex()) {
+                    var lastUpdate = 0L
+                    try {
+                        val installed = GameContentUtils.install(context, item.uri, titleId, uri) { copied, total ->
+                            val now = android.os.SystemClock.elapsedRealtime()
+                            if (copied < 0 || now - lastUpdate >= 150) {
+                                lastUpdate = now
+                                progress.post {
+                                    text.text = "${index + 1}/${uris.size} • " + getString(if (copied < 0) R.string.game_content_verifying else R.string.game_content_copying)
+                                    progress.isIndeterminate = total <= 0 || copied < 0
+                                    if (copied >= 0 && total > 0) progress.progress = (copied.toDouble() * 100 / total).toInt().coerceIn(0, 100)
+                                }
+                            }
                         }
+                        if (installed) installedCount++ else existingCount++
+                    } catch (e : CancellationException) {
+                        throw e
+                    } catch (e : Exception) {
+                        failures.add("${index + 1}: ${e.message ?: "Unknown error"}")
                     }
                 }
-                if (isAdded && view != null) Snackbar.make(binding.root, if (installed) R.string.game_content_installed else R.string.game_content_already_installed, Snackbar.LENGTH_LONG).show()
+                if (isAdded && view != null) {
+                    Snackbar.make(binding.root, getString(R.string.game_content_batch_summary, installedCount, existingCount, failures.size), Snackbar.LENGTH_LONG).show()
+                    if (failures.isNotEmpty()) AlertDialog.Builder(requireContext())
+                        .setTitle(R.string.game_content_batch_failed).setMessage(failures.take(12).joinToString("\n"))
+                        .setPositiveButton(android.R.string.ok, null).show()
+                }
             } catch (e : CancellationException) {
                 throw e
             } catch (e : Exception) {
@@ -123,6 +147,66 @@ class AppDialog : BottomSheetDialogFragment() {
                 }
             }
         }
+    }
+
+    private fun refreshMods() {
+        val mods = item.titleId?.let { GameModUtils.list(requireContext(), it) } ?: emptyList()
+        binding.modStatus.text = getString(R.string.game_mods_count, mods.size)
+        binding.manageMods.isEnabled = mods.isNotEmpty()
+    }
+
+    private fun installMod(uri: android.net.Uri, folder: Boolean = false) {
+        val titleId = item.titleId ?: return
+        val context = requireContext().applicationContext
+        binding.installMod.isEnabled = false
+        binding.installModZip.isEnabled = false
+        lifecycleScope.launch {
+            try {
+                if (folder) GameModUtils.installFolder(context, titleId, uri)
+                else GameModUtils.install(context, titleId, uri)
+                if (isAdded && view != null) Snackbar.make(binding.root, R.string.game_mods_imported, Snackbar.LENGTH_LONG).show()
+            } catch (e : Exception) {
+                if (isAdded && view != null) AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.game_mods_fail).setMessage(e.message)
+                    .setPositiveButton(android.R.string.ok, null).show()
+            } finally {
+                if (isAdded && view != null) {
+                    binding.installMod.isEnabled = true
+                    binding.installModZip.isEnabled = true
+                    refreshMods()
+                }
+            }
+        }
+    }
+
+    private fun manageMods() {
+        val titleId = item.titleId ?: return
+        val mods = GameModUtils.list(requireContext(), titleId)
+        if (mods.isEmpty()) return
+        val labels = mods.map { it.name }.toTypedArray()
+        val enabled = mods.map { GameModUtils.isEnabled(it) }.toBooleanArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.game_mods_manage)
+            .setMessage(R.string.game_mods_notes)
+            .setMultiChoiceItems(labels, enabled) { _, which, checked ->
+                try { GameModUtils.setEnabled(mods[which], checked); refreshMods() }
+                catch (e : Exception) { Snackbar.make(binding.root, e.message ?: "Failed to update mod", Snackbar.LENGTH_LONG).show() }
+            }
+            .setNeutralButton(R.string.game_mods_remove) { _, _ ->
+                val updated = GameModUtils.list(requireContext(), titleId)
+                AlertDialog.Builder(requireContext()).setTitle(R.string.game_mods_remove)
+                    .setItems(updated.map { it.name }.toTypedArray()) { _, index ->
+                        AlertDialog.Builder(requireContext()).setTitle(R.string.game_mods_remove)
+                            .setMessage(updated[index].name)
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .setPositiveButton(R.string.yes) { _, _ ->
+                                try { GameModUtils.remove(requireContext(), titleId, updated[index]); refreshMods() }
+                                catch (e : Exception) { Snackbar.make(binding.root, e.message ?: "Could not delete mod", Snackbar.LENGTH_LONG).show() }
+                            }.show()
+                    }.setNegativeButton(android.R.string.cancel, null).show()
+            }
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     override fun onCreate(savedInstanceState : Bundle?) {
@@ -215,6 +299,12 @@ class AppDialog : BottomSheetDialogFragment() {
 
         binding.installContent.isEnabled = item.loaderResult == LoaderResult.Success && (item.format == RomFormat.NSP || item.format == RomFormat.XCI)
         binding.installContent.setOnClickListener { contentPicker.launch(arrayOf("*/*")) }
+        binding.installMod.isEnabled = item.titleId?.matches(Regex("[0-9a-fA-F]{16}")) == true
+        binding.installMod.setOnClickListener { modFolderPicker.launch(null) }
+        binding.installModZip.isEnabled = binding.installMod.isEnabled
+        binding.installModZip.setOnClickListener { modPicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }
+        binding.manageMods.setOnClickListener { manageMods() }
+        refreshMods()
         refreshContent()
         binding.manageContent.setOnClickListener {
             val titleId = item.titleId ?: return@setOnClickListener
