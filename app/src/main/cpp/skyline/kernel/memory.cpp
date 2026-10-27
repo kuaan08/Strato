@@ -3,7 +3,9 @@
 
 #include <fstream>
 #include <asm-generic/unistd.h>
+#include <cstdint>
 #include <fcntl.h>
+#include <limits>
 #include "memory.h"
 #include "memory_reclaim.h"
 #include "types/KProcess.h"
@@ -663,27 +665,46 @@ namespace skyline::kernel {
         return true;
     }
 
-    void MemoryManager::SvcUnmapMemory(span<u8> source, span<u8> destination) {
+    bool MemoryManager::SvcUnmapMemory(span<u8> source, span<u8> destination) {
         std::unique_lock lock{mutex};
 
-        auto dstChunk = chunks.lower_bound(destination.data());
-        if (destination.data() < dstChunk->first)
-            --dstChunk;
-        while (dstChunk->second.state == memory::states::Unmapped)
-            ++dstChunk;
+        const auto sourceAddress{reinterpret_cast<std::uintptr_t>(source.data())};
+        const auto destinationAddress{reinterpret_cast<std::uintptr_t>(destination.data())};
+        if (source.empty() || source.size() != destination.size() ||
+            source.size() > std::numeric_limits<std::uintptr_t>::max() - sourceAddress ||
+            destination.size() > std::numeric_limits<std::uintptr_t>::max() - destinationAddress ||
+            !AddressSpaceContains(source) || !AddressSpaceContains(destination))
+            return false;
 
-        if ((destination.data() + destination.size()) > dstChunk->first) [[likely]] {
-            ForeachChunkInRange(span<u8>{source.data() + (dstChunk->first - destination.data()), dstChunk->second.size}, [&](std::pair<u8 *, ChunkDescriptor> &desc) __attribute__((always_inline)) {
-                desc.second.permission = dstChunk->second.permission;
-                desc.second.attributes.isBorrowed = false;
-                MapInternal(desc);
-            });
-
-            auto sourceHost{GetHostSpan(source)};
-            auto dstChunkHost{GetHostSpan(span<u8>{dstChunk->first, dstChunk->second.size})};
-            auto destinationOffset{dstChunk->first - destination.data()};
-            std::memcpy(sourceHost.data() + destinationOffset, dstChunkHost.data(), dstChunkHost.size());
+        std::vector<std::pair<u8 *, ChunkDescriptor>> sourceRanges;
+        if (!CollectSvcMemoryRange(source, 1U << 15, 0xFE, sourceRanges))
+            return false;
+        for (const auto &range : sourceRanges) {
+            if (range.second.permission != memory::Permission{} || !range.second.attributes.isBorrowed)
+                return false;
         }
+
+        std::vector<std::pair<u8 *, ChunkDescriptor>> destinationRanges;
+        if (!CollectSvcMemoryRange(destination, 0, 0xFF, destinationRanges))
+            return false;
+        for (const auto &range : destinationRanges) {
+            if (range.second.state != memory::states::Stack ||
+                range.second.permission != memory::Permission{true, true, false})
+                return false;
+        }
+
+        // Restore from snapshots: MapInternal can split, merge, or erase chunk iterators.
+        const auto permission{destinationRanges.front().second.permission};
+        for (auto &range : sourceRanges) {
+            range.second.permission = permission;
+            range.second.attributes.isBorrowed = false;
+            MapInternal(range);
+        }
+
+        auto sourceHost{GetHostSpan(source)};
+        auto destinationHost{GetHostSpan(destination)};
+        std::memcpy(sourceHost.data(), destinationHost.data(), source.size());
+        return true;
     }
 
     void MemoryManager::AddRef(std::shared_ptr<type::KMemory> ptr) {

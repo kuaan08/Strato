@@ -13,8 +13,9 @@ svc = (base / "svc.cpp").read_text()
 types = header[header.index("    namespace memory {"):header.index("        /**\n         * @brief A memory region")]
 functions = cpp[cpp.index("    void MemoryManager::MapInternal("):cpp.index("    void MemoryManager::ForeachChunkInRange(")]
 functions += cpp[cpp.index("    bool MemoryManager::CollectSvcMemoryRange("):cpp.index("    void MemoryManager::SetRegionBorrowed(")]
-functions += cpp[cpp.index("    bool MemoryManager::SvcMapMemory("):cpp.index("    void MemoryManager::SvcUnmapMemory(")]
+functions += cpp[cpp.index("    bool MemoryManager::SvcMapMemory("):cpp.index("    void MemoryManager::AddRef(")]
 method = svc[svc.index("    void SetMemoryAttribute("):svc.index("    void MapMemory(")]
+unmap_method = svc[svc.index("    void UnmapMemory("):svc.index("    void QueryMemory(")]
 source = r'''
 #include <algorithm>
 #include <cassert>
@@ -47,6 +48,7 @@ public:
  bool SvcSetMemoryPermission(span<u8>,memory::Permission);
  bool SvcMapMemory(span<u8>,span<u8>);
  bool SvcMapTransferMemory(span<u8>,memory::Permission,ChunkDescriptor&,const std::function<void()>&);
+ bool SvcUnmapMemory(span<u8>,span<u8>);
 };
 FUNCTIONS
 namespace svc {
@@ -132,6 +134,31 @@ int main(){
  reset(memory::states::Heap);
  assert(m.SvcMapTransferMemory({bytes,0x1000},memory::Permission{true,true,false},original,[&]{mapped=true;}));
  assert(mapped&&attr(0)==1&&original.state==memory::states::Heap);
+
+ // Exercise the production SVC map/unmap path with a borrowed source and stack destination.
+ auto prepareUnmap=[&]{
+  m.chunks.clear();
+  ChunkDescriptor code{};code.state=memory::states::CodeMutable;code.permission=memory::Permission{true,true,false};code.size=0x4000;m.chunks[bytes]=code;
+  ChunkDescriptor gap{};gap.state=memory::states::Unmapped;gap.size=0x4000;m.chunks[bytes+0x4000]=gap;
+  ChunkDescriptor stack{};stack.state=memory::states::Stack;stack.permission=memory::Permission{true,true,false};stack.isSrcMergeDisallowed=true;stack.size=0x1000;m.chunks[bytes+0x8000]=stack;
+  ChunkDescriptor tail{};tail.state=memory::states::Unmapped;tail.size=sizeof(bytes)-0x9000;m.chunks[bytes+0x9000]=tail;
+  ChunkDescriptor end{};end.state=memory::states::Reserved;end.size=0;m.chunks[bytes+sizeof(bytes)]=end;
+ };
+ prepareUnmap();
+ std::memset(bytes+0x1000,0x11,0x1000);std::memset(bytes+0x8000,0x22,0x1000);
+ assert(m.SvcMapMemory({bytes+0x1000,0x1000},{bytes+0x8000,0x1000}));
+ assert(std::memcmp(bytes+0x1000,bytes+0x8000,0x1000)==0);
+ std::memset(bytes+0x8000,0x5A,0x1000);
+ assert(m.SvcUnmapMemory({bytes+0x1000,0x1000},{bytes+0x8000,0x1000}));
+ assert(std::memcmp(bytes+0x1000,bytes+0x8000,0x1000)==0);
+ assert(std::prev(m.chunks.upper_bound(bytes+0x1000))->second.permission==(memory::Permission{true,true,false}));
+ assert(!std::prev(m.chunks.upper_bound(bytes+0x1000))->second.attributes.isBorrowed);
+ // Repeating an unmap or naming an unmapped source must be rejected without touching data.
+ std::memset(bytes+0x8000,0x77,0x1000);
+ assert(!m.SvcUnmapMemory({bytes+0x1000,0x1000},{bytes+0x8000,0x1000}));
+ assert(bytes[0x1000]==0x5A);
+ assert(!m.SvcUnmapMemory({bytes+0x5000,0x1000},{bytes+0x8000,0x1000}));
+ assert(bytes[0x1000]==0x5A&&bytes[0x8000]==0x77);
 }
 '''.replace("TYPES", types).replace("FUNCTIONS", functions).replace("METHOD", method)
 with tempfile.TemporaryDirectory() as directory:
@@ -140,3 +167,6 @@ with tempfile.TemporaryDirectory() as directory:
     subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", str(path / "test.cpp"), "-o", str(path / "test")], check=True)
     subprocess.run([str(path / "test")], check=True)
 print("PASS: memory attribute SVC, sticky locks, whole-range validation and protected mutations")
+assert "if (!state.process->memory.SvcUnmapMemory" in unmap_method
+assert "ctx.w0 = result::InvalidCurrentMemory;" in unmap_method
+print("PASS: SvcUnmapMemory validates borrowed source and stack destination before restoring memory")

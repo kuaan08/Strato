@@ -83,6 +83,8 @@ jobs:
 
       - name: Run deterministic native regression tests
         run: |
+          python3 tests/test_memory_attributes.py
+          python3 tests/test_memory_reclaim.py
           python3 tests/test_frame_pacing.py
           python3 tests/test_scheduler_timing.py
           python3 tests/test_scheduler_wake.py
