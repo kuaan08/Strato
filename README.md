@@ -1,39 +1,23 @@
-# Strato Mali
+# Strato Adreno
 
-## 💬 Community / Telegram
+Fork de desenvolvimento do [Strato](https://github.com/strato-emu/strato), projeto que continua o trabalho do Skyline. Esta variante está sendo preparada para GPUs Adreno em Android, com o Poco X5 Pro 5G como primeiro aparelho-alvo.
 
-Join the **Strato Mali Telegram community** for development updates, compatibility discussions, testing feedback, and bug reports. 🫐
+O código já contém suporte genérico a Vulkan, carregamento opcional de drivers compatíveis e o caminho de memória KGSL para dispositivos Adreno. O APK desta branch não inclui um driver Vulkan customizado: por padrão, usa o driver Vulkan fornecido pelo Android/aparelho. A detecção por capacidades e identificadores Vulkan deve continuar sendo a base para ajustes de compatibilidade, em vez de presumir o comportamento apenas pelo nome do telefone.
 
-👉 **[Join Strato Mali on Telegram](https://t.me/+XkmbXMK4c0BhMjZh)**
+## Compilação
 
-**Strato Mali** is a public development fork of [Strato](https://github.com/strato-emu/strato) focused on Mali GPUs, Kbase/CSF and experimental Mesa PanVK support on Android.
+O GitHub Actions compila a variante `mainlineRelease` ao receber push em `main` ou em branches `release/**`, em pull requests para `main` e também sob demanda. O workflow baixa os submódulos, configura Java 17, NDK `26.1.10909125` e CMake 3.22.1, executa os testes unitários Android e publica o APK como artefato da execução. Para baixar, abra a execução em **Actions** e use a seção **Artifacts**.
 
-The development branch is based on Strato's protected `master` history at commit `ae1566a48285816a87e81d4aeb40bd2f4e56e60b` ("Fix accidental recursion with trap handling"). The upstream `jit` branch is preserved separately for later evaluation; it is not merged into the stable base by default.
+Para compilar localmente, clone incluindo os submódulos e execute `./gradlew assembleMainlineRelease`. Consulte [`BUILDING.md`](BUILDING.md) para configurar o Android Studio. O APK gerado pelo Actions é assinado com a chave de depuração do Gradle e serve para testes; não é uma build de distribuição assinada para publicação.
 
-## Mali / PanVK integration
+O pacote Android foi separado como `org.stratoemu.stratoadreno`. Isso permite instalar a variante em paralelo a outros pacotes Strato, mas os dados e saves internos não são migrados automaticamente entre IDs de pacote.
 
-Strato already contains a custom Vulkan driver package system and an Android linker-namespace loader through libadrenotools. Strato Mali extends that path for Mali:
+## Perfil Poco X5 Pro 5G
 
-- custom GPU driver selection is enabled when either `/dev/kgsl-3d0` or `/dev/mali0` is present;
-- Mali custom Vulkan drivers can be loaded from Strato's existing `gpu_drivers` directory;
-- the KGSL/libgsl direct-memory-import hook is enabled only on Adreno/KGSL and is explicitly disabled on Mali/Kbase;
-- Adreno-only maximum-clock controls remain Adreno-only;
-- Mali keeps Strato's normal buffer upload path rather than attempting KGSL memory-import ioctls.
+O aparelho é o alvo inicial de validação, mas esta branch ainda não deve ser descrita como otimizada ou validada nele. Ajustes de clocks, importação direta de memória, resolução interna, sincronização e opções específicas de Vulkan podem elevar temperatura, consumo, travamentos ou defeitos gráficos. Por isso, devem ser avaliados com medições repetíveis no próprio telefone antes de virarem padrões.
 
-The first target is the Mali-G615 MC6 / Kbase CSF stack used for PanVK development. PanVK support is experimental and is not presented as conformant or production-ready.
+Ao relatar um teste, registre o commit/APK, versão do Android e do driver Vulkan, jogo e cena usados, configuração gráfica, FPS/frametime, temperatura aproximada e se houve artefatos ou travamentos. Compare primeiro com o driver do sistema e as configurações padrão.
 
-## Branches
+## Créditos e licença
 
-- `strato-mali` — Strato Mali development branch.
-- `master` — exact upstream stable Strato master baseline.
-- `jit` — upstream experimental JIT branch preserved for reference/testing.
-
-## Upstream and credits
-
-Strato Mali is derived from **Strato**, which continues the work of **Skyline**. The original Strato/Skyline authors and contributors retain credit for their work. This fork also uses Mesa/PanVK work and a Kbase PanVK fork maintained for the Mali integration.
-
-See the repository history and `LICENSE.md` for license and attribution details.
-
-## License
-
-The Strato codebase is licensed under **GNU GPL v3.0 or later**. Existing third-party components and submodules retain their respective licenses. This fork does not remove or replace upstream copyright notices.
+O projeto deriva do Strato e preserva os créditos dos autores e colaboradores de Strato/Skyline. Os avisos de direitos autorais e as licenças de bibliotecas e submódulos permanecem junto aos respectivos componentes. O código Strato está sob GNU GPL v3 ou posterior; consulte [`LICENSE.md`](LICENSE.md) e as licenças de terceiros antes de redistribuir.

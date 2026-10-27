@@ -1,10 +1,10 @@
-name: Publish Strato Mali Test APK
+name: Publish Strato Adreno Test APK
 
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "Successful Build Strato Mali run ID"
+        description: "Successful Strato Adreno CI run ID"
         required: true
         type: string
 
@@ -16,26 +16,26 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Download successful Strato Mali APK
+      - name: Download successful Strato Adreno APK
         uses: actions/download-artifact@v4
         with:
-          name: Strato-Mali-APK
+          name: Strato-Adreno-APK
           path: apk
           repository: ${{ github.repository }}
           run-id: ${{ inputs.run_id }}
           github-token: ${{ github.token }}
 
-      - name: Publish rolling private test prerelease
+      - name: Publish rolling Adreno test prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           ls -lh apk
           APK="$(find apk -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          gh release delete strato-mali-latest --repo "${GITHUB_REPOSITORY}" --cleanup-tag -y || true
-          gh release create strato-mali-latest "$APK#Strato-Mali-latest.apk" \
+          gh release delete strato-adreno-latest --repo "${GITHUB_REPOSITORY}" --cleanup-tag -y || true
+          gh release create strato-adreno-latest "$APK#Strato-Adreno-latest.apk" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "Strato Mali latest test" \
-            --notes "Private rolling Strato Mali test build with bundled PanVK G615 integration." \
+            --title "Strato Adreno latest test" \
+            --notes "Rolling Strato Adreno test build. APK is signed with the Gradle debug key; it is not a Play Store release." \
             --prerelease

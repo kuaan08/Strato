@@ -1,10 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="app_name" translatable="false">Strato Mali</string>
-    <string name="mali_kofi_title">Support Strato Mali 🫐</string>
-    <string name="mali_kofi_message">The Strato Mali developer wanted to give you a good time, and in return you can offer them a coffee on Ko-fi. ☕🫐</string>
-    <string name="mali_kofi_button">Ko-fi</string>
-    <string name="mali_kofi_not_now">Not now</string>
-    <string name="mali_kofi_open_failed">No browser available to open Ko-fi.</string>
+    <string name="app_name" translatable="false">Strato Adreno</string>
     <!-- Common -->
     <string name="search">Search</string>
     <string name="error">An error has occurred</string>
@@ -41,8 +36,8 @@
     <!-- Settings - Content -->
     <string name="content">Content</string>
     <string name="open_data_directory">View Internal Directory</string>
-    <string name="open_data_directory_summary">Opens Strato Mali\'s internal directory in a file manager</string>
-    <string name="open_data_directory_failed">Cannot find an external file manager to open Strato Mali\'s internal directory</string>
+    <string name="open_data_directory_summary">Opens Strato Adreno\'s internal directory in a file manager</string>
+    <string name="open_data_directory_failed">Cannot find an external file manager to open Strato Adreno\'s internal directory</string>
     <string name="search_location">Search Location</string>
     <!-- Settings - Keys -->
     <string name="keys">Keys</string>
@@ -65,7 +60,7 @@
     <string name="appearance">Appearance</string>
     <string name="theme">Theme</string>
     <string name="use_material_you">Use Material You</string>
-    <string name="use_material_you_desc_off">Strato Mali colors will be used</string>
+    <string name="use_material_you_desc_off">Strato Adreno colors will be used</string>
     <string name="use_material_you_desc_on">Material You will be used</string>
     <string name="app_language">App Language</string>
     <string name="app_language_default">Use System Default</string>

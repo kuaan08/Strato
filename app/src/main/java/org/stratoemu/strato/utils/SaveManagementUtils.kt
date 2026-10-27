@@ -78,7 +78,7 @@ interface SaveManagementUtils {
                     } ?: throw IOException("Could not create save ZIP at the selected location")
                     true
                 } catch (e : Exception) {
-                    android.util.Log.e("StratoMali", "Save export failed", e)
+                    android.util.Log.e("StratoAdreno", "Save export failed", e)
                     false
                 }
                 withContext(Dispatchers.Main) {
@@ -149,7 +149,7 @@ interface SaveManagementUtils {
                 return
             }
             val safeName = outputZipName.replace(Regex("[\\\\/:*?\"<>|\\n\\r]"), "_").take(120).trim()
-            val name = (safeName.ifBlank { "Strato Mali Saves" }) + ".zip"
+            val name = (safeName.ifBlank { "Strato Adreno Saves" }) + ".zip"
             context.getSharedPreferences("save_export_pending", Context.MODE_PRIVATE).edit()
                 .putString("title_id", titleId).commit()
             startForResultExportSave.launch(name)

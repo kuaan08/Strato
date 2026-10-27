@@ -5,7 +5,7 @@
     <color name="colorPerfStatsPrimary">#B31E88FF</color>
     <color name="colorPerfStatsSecondary">#B300C8FF</color>
 
-    <!-- Strato Mali: electric blueberry blue + cool cyan on deep graphite. -->
+    <!-- Strato Adreno: electric blue + cool cyan on deep graphite. -->
     <color name="seed">#1769FF</color>
     <color name="md_theme_light_primary">#0057E7</color>
     <color name="md_theme_light_onPrimary">#FFFFFF</color>

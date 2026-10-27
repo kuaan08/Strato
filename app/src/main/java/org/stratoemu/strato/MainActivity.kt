@@ -5,15 +5,12 @@
 
 package org.stratoemu.strato
 
-import android.app.Dialog
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.provider.DocumentsContract
 import android.view.View
-import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -88,7 +85,7 @@ class MainActivity : AppCompatActivity() {
                 appSettings.searchLocation = uri.toString()
                 loadRoms(false)
             } catch (e : Exception) {
-                android.util.Log.e("StratoMali", "Failed to use selected ROM directory: $uri", e)
+                android.util.Log.e("StratoAdreno", "Failed to use selected ROM directory: $uri", e)
                 Snackbar.make(
                     findViewById(android.R.id.content),
                     getString(R.string.error) + ": " + (e.localizedMessage ?: e.javaClass.simpleName),
@@ -151,14 +148,6 @@ class MainActivity : AppCompatActivity() {
                 setupCallback.launch(Intent(this, org.stratoemu.strato.setup.SetupActivity::class.java))
         } else {
             loadRoms(!appSettings.refreshRequired)
-            // The first-run setup is never interrupted. Show the optional
-            // donation invitation on a fresh library launch only, not on
-            // rotation, returning from a game, or completing SetupActivity.
-            if (savedInstanceState == null) {
-                binding.root.post {
-                    if (!isFinishing && !isDestroyed) showKofiSupportDialog()
-                }
-            }
         }
 
         binding.searchBar.apply {
@@ -193,30 +182,6 @@ class MainActivity : AppCompatActivity() {
         // Game details already contain the DLC/Update installation action.
         binding.navInstall.setOnClickListener { selectedGame?.let(::selectShowGameDialog) }
         binding.navAdd.setOnClickListener { documentPicker.launch(null) }
-    }
-
-    private fun showKofiSupportDialog() {
-        val dialog = Dialog(this)
-        dialog.setContentView(R.layout.mali_kofi_dialog)
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.setCancelable(true)
-
-        dialog.findViewById<View>(R.id.kofi_button).setOnClickListener {
-            dialog.dismiss()
-            try {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://ko-fi.com/lukevalen/donate")))
-            } catch (_: ActivityNotFoundException) {
-                Snackbar.make(binding.root, R.string.mali_kofi_open_failed, Snackbar.LENGTH_LONG).show()
-            }
-        }
-        dialog.findViewById<View>(R.id.kofi_not_now).setOnClickListener { dialog.dismiss() }
-
-        dialog.show()
-        val screenWidth = resources.displayMetrics.widthPixels
-        val maxWidth = (430 * resources.displayMetrics.density).toInt()
-        val margins = (40 * resources.displayMetrics.density).toInt()
-        dialog.window?.setLayout((screenWidth - margins).coerceAtMost(maxWidth).coerceAtLeast(1),
-                                 WindowManager.LayoutParams.WRAP_CONTENT)
     }
 
     private fun setAppListDecoration() {

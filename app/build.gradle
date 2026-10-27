@@ -17,7 +17,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.lukevalen.stratomali"
+        applicationId "org.stratoemu.stratoadreno"
 
         minSdk 29
         targetSdk 33
@@ -259,4 +259,3 @@ def getGitBranch() {
 
     return branch
 }
-

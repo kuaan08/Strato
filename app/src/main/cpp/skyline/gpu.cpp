@@ -12,7 +12,7 @@
 namespace skyline::gpu {
     static vk::raii::Instance CreateInstance(const DeviceState &state, const vk::raii::Context &context) {
         vk::ApplicationInfo applicationInfo{
-            .pApplicationName = "Strato Mali",
+            .pApplicationName = "Strato Adreno",
             .applicationVersion = static_cast<uint32_t>(state.jvm->GetVersionCode()), // Get the application version from JNI
             .pEngineName = "FTX1", // "Fast Tegra X1"
             .apiVersion = VkApiVersion,
@@ -355,11 +355,11 @@ namespace skyline::gpu {
         auto *activeMapping = hasKgsl ? mapping : nullptr;
 
         if (hasMali)
-            LOGI("Strato Mali: Kbase device detected; KGSL mapping import disabled");
+            LOGI("Strato: Kbase device detected; KGSL mapping import disabled");
 
         // If the user has selected a custom driver, try to load it.
         if (!(*state.settings->gpuDriver).empty()) {
-            LOGI("Strato Mali: loading custom Vulkan driver {}/{}",
+            LOGI("Strato Adreno: loading custom Vulkan driver {}/{}",
                  *state.settings->gpuDriver, *state.settings->gpuDriverLibraryName);
             libvulkanHandle = adrenotools_open_libvulkan(
                 RTLD_NOW,
@@ -445,4 +445,3 @@ namespace skyline::gpu {
         graphicsPipelineManager.emplace(*this, *state.jvm);
     }
 }
-
