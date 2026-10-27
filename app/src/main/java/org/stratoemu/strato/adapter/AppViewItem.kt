@@ -16,7 +16,8 @@ import android.widget.ImageView
 import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.viewbinding.ViewBinding
-import androidx.core.content.ContextCompat
+import com.google.android.material.R as MaterialR
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.card.MaterialCardView
 import org.stratoemu.strato.R
 import org.stratoemu.strato.data.AppItem
@@ -111,7 +112,7 @@ class AppViewItem(var layoutType : LayoutType, private val item : AppItem, priva
                 ?: (binding.root as? MaterialCardView)
             card?.apply {
                 strokeWidth = if (isSelected(item)) (3f * resources.displayMetrics.density).toInt() else 0
-                strokeColor = ContextCompat.getColor(context, R.color.mali_cyan)
+                strokeColor = MaterialColors.getColor(binding.root, MaterialR.attr.colorPrimary, Color.CYAN)
                 cardElevation = if (isSelected(item)) 7f * resources.displayMetrics.density else 1f * resources.displayMetrics.density
             }
         }

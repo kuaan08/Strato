@@ -15,9 +15,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="5dp"
-        app:cardBackgroundColor="@color/mali_card"
+        app:cardBackgroundColor="?attr/colorSurfaceVariant"
         app:cardCornerRadius="20dp"
-        app:strokeColor="@color/mali_cyan">
+        app:strokeColor="?attr/colorPrimary">
 
         <ImageView
             android:id="@+id/icon"
@@ -38,7 +38,7 @@
         android:layout_marginEnd="10dp"
         android:ellipsize="end"
         android:singleLine="true"
-        android:textColor="@color/mali_text"
+        android:textColor="?attr/colorOnSurface"
         tools:text="Title" />
 
     <TextView

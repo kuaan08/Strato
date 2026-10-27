@@ -32,19 +32,17 @@ class MaliUIConsistencyTests(unittest.TestCase):
         self.assertEqual(app.attrib[ANDROID + "icon"], "@drawable/strato_mali_launcher_exact")
         self.assertEqual(app.attrib[ANDROID + "roundIcon"], "@drawable/strato_mali_launcher_exact")
 
-    def test_library_layout_changes_only_icon(self):
+    def test_library_tracks_theme_and_keeps_primary_controls(self):
         layout = ROOT / "app/src/main/res/layout/main_activity.xml"
         live = layout.read_text()
-        # SHA256 of the unchanged library XML from before this design patch.
-        # Use a fixed baseline, because CI tests the committed HEAD.
-        import hashlib
-        original = live.replace(
-            'android:src="@drawable/strato_mali_logo_transparent"',
-            'android:src="@drawable/strato_mali_logo_separada_azul"')
-        self.assertEqual(hashlib.sha256(original.encode()).hexdigest(),
-                         "046a0e164310ec75955e26429d22f65c6fbfd00e50f5f8f34ba492f4773f5a1c")
-        self.assertIn('android:id="@+id/featured_panel"', live)
-        self.assertIn('android:id="@+id/search_icon"', live)
+        doc = ET.parse(layout).getroot()
+        self.assertEqual(doc.attrib[ANDROID + "background"], "?android:attr/colorBackground")
+        self.assertIn('android:text="@string/app_name"', live)
+        self.assertNotIn('android:text=" Mali"', live)
+        self.assertNotIn("@color/mali_", live)
+        for attr in ("@+id/featured_panel", "@+id/search_icon", "@+id/settings_icon",
+                     "@+id/app_list", "@+id/library_dock"):
+            self.assertIn(attr, live)
 
     def test_setup_functional_buttons_preserved(self):
         doc = ET.parse(RES / "layout/setup_activity.xml").getroot()

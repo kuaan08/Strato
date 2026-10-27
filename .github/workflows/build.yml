@@ -72,6 +72,12 @@ jobs:
       - name: Check rounded settings tab indicator
         run: python3 tests/test_settings_tab_indicator.py
 
+      - name: Check library theme and motion
+        run: python3 tests/test_library_theme_motion.py
+
+      - name: Check library and setup UI resources
+        run: python3 tests/test_mali_ui_consistency.py
+
       - name: Run deterministic native regression tests
         run: |
           python3 tests/test_frame_pacing.py

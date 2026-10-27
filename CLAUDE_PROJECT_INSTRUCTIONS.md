@@ -18,7 +18,9 @@ Preparar e melhorar esta variante para GPUs Adreno em Android, começando pela v
 - A compilação completa e os testes de CI foram confirmados no commit `c652460b` (execução Actions [40553675540](https://github.com/kuaan08/Strato/actions/runs/40553675540)), incluindo o build Android e o artefato APK. Isso confirma build/testes de CI, não compatibilidade ou desempenho no Poco.
 - O scheduler usa helpers puros em `app/src/main/cpp/skyline/kernel/scheduler_timing.h` para a EWMA da duração real e a estimativa saturada de timeslice restante; `tests/test_scheduler_timing.py` valida os limites com ASan/UBSan. A correção não prova, por si só, ganho de desempenho em jogos.
 - A interface inclui português brasileiro em `app/src/main/res/values-b+pt+BR/`, registrado em `locales_config.xml` e no seletor de idioma do app. O teste `tests/test_ptbr_resources.py` confere cobertura das strings, placeholders, arrays e registro do locale; textos de licenças e mensagens internas de log podem continuar no idioma original.
-- As paletas de cores Strato Blue, Emerald, Violet e AMOLED (modo escuro) são definidas em `theme_palettes.xml` e escolhidas pela preferência `app_color_palette`. Material You tem prioridade quando ativo. O valor padrão continua preservando a aparência azul anterior.
+- As paletas Strato Blue, Emerald, Violet e AMOLED (modo escuro) são escolhidas pela preferência `app_color_palette`. Material You tem prioridade quando ativo; as cores de fundo e superfície devem vir do tema claro/escuro e não ser hardcoded.
+- A biblioteca de jogos agora usa atributos Material3 para fundo, busca, dock, botões, cards e seleção; o título visível vem de `@string/app_name` (Strato Adreno). `tests/test_library_theme_motion.py` protege essa integração, os ícones do sistema e as animações.
+- A interface usa animações curtas e pontuais: entrada/remoção da lista de jogos, abertura do painel do jogo selecionado, feedback do dock e transições entre categorias das configurações. Não adicione animações contínuas nem trabalho visual à Activity de emulação.
 
 ## Compilação e verificações
 
@@ -36,7 +38,7 @@ Para rodar os testes de unidade usados pelo CI:
 ./gradlew testMainlineReleaseUnitTest
 ```
 
-O workflow também executa `python3 tests/test_adreno_branding.py`, `python3 tests/test_ptbr_resources.py`, `python3 tests/test_frame_pacing.py` e `python3 tests/test_scheduler_timing.py`. Faça alterações pequenas, rode os testes relevantes e confira `git diff --check`. Em alterações nativas, garanta que o workflow inteiro — incluindo compilação C/C++ via CMake — continue passando.
+O workflow também executa `python3 tests/test_adreno_branding.py`, `python3 tests/test_ptbr_resources.py`, `python3 tests/test_settings_tab_indicator.py`, `python3 tests/test_library_theme_motion.py`, `python3 tests/test_mali_ui_consistency.py`, `python3 tests/test_frame_pacing.py` e `python3 tests/test_scheduler_timing.py`. Faça alterações pequenas, rode os testes relevantes e confira `git diff --check`. Em alterações nativas, garanta que o workflow inteiro — incluindo compilação C/C++ via CMake — continue passando.
 
 ## Regras para otimização no Poco X5 Pro
 

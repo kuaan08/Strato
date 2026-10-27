@@ -26,7 +26,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:srcCompat="@drawable/ic_search"
-            app:tint="@color/mali_muted" />
+            app:tint="?attr/colorOnSurfaceVariant" />
 
         <EditText
             android:id="@+id/search_field"
@@ -41,8 +41,8 @@
             android:inputType="text"
             android:singleLine="true"
             android:textSize="16sp"
-            android:textColor="@color/mali_text"
-            android:textColorHint="@color/mali_muted"
+            android:textColor="?attr/colorOnSurface"
+            android:textColorHint="?attr/colorOnSurfaceVariant"
             app:layout_constrainedWidth="true"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"

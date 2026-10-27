@@ -40,6 +40,7 @@ private const val PREFERENCE_DIALOG_FRAGMENT_TAG = "androidx.preference.Preferen
 
 class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPreferenceDisplayDialogCallback {
     private var searchView: SearchView? = null
+    private var sectionTabPosition = 0
     private val sectionDescriptions = listOf(R.string.settings_graphics_summary, R.string.settings_gpu_summary,
         R.string.settings_folders_summary, R.string.settings_drivers_summary, R.string.settings_general_summary)
 
@@ -48,6 +49,29 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         arrayOf("category_debug", "category_credits", "category_licenses")
     } else {
         arrayOf("category_credits", "category_licenses")
+    }
+
+    private fun animateSectionDescription(stringRes: Int) {
+        binding.sectionDescription.animate().cancel()
+        binding.sectionDescription.alpha = 0f
+        binding.sectionDescription.translationY = 4f * resources.displayMetrics.density
+        binding.sectionDescription.setText(stringRes)
+        binding.sectionDescription.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(180L)
+            .start()
+    }
+
+    private fun animateSettingsContent(direction: Float) {
+        binding.settings.animate().cancel()
+        binding.settings.alpha = 0f
+        binding.settings.translationX = direction * 8f * resources.displayMetrics.density
+        binding.settings.animate()
+            .alpha(1f)
+            .translationX(0f)
+            .setDuration(190L)
+            .start()
     }
 
     /**
@@ -78,13 +102,17 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
             val titles = listOf(R.string.settings_tab_graphics, R.string.settings_tab_gpu,
                 R.string.settings_tab_folders, R.string.settings_tab_drivers, R.string.settings_tab_general)
             val selected = savedInstanceState?.getInt("settings_tab", 0) ?: 0
+            sectionTabPosition = selected
             titles.forEachIndexed { index, title ->
                 binding.settingsTabs.addTab(binding.settingsTabs.newTab().setText(title), index == selected)
             }
             binding.settingsTabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) {
+                    val direction = if (tab.position >= sectionTabPosition) 1f else -1f
+                    sectionTabPosition = tab.position
                     (preferenceFragment as? GlobalSettingsFragment)?.showSection(sections[tab.position], "")
-                    binding.sectionDescription.setText(sectionDescriptions[tab.position])
+                    animateSectionDescription(sectionDescriptions[tab.position])
+                    animateSettingsContent(direction)
                     // Searching is scoped to the selected tab.
                     searchView?.setQuery("", false)
                 }

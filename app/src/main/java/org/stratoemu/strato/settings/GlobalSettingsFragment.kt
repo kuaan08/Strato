@@ -14,6 +14,7 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.forEach
 import androidx.preference.SwitchPreferenceCompat
 import androidx.preference.TwoStatePreference
+import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
 import org.stratoemu.strato.BuildConfig
@@ -74,6 +75,13 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
         WindowInsetsHelper.setPadding(recyclerView, bottom = true)
         (recyclerView as? androidx.recyclerview.widget.RecyclerView)?.apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            itemAnimator = DefaultItemAnimator().apply {
+                addDuration = 180L
+                removeDuration = 120L
+                moveDuration = 160L
+                changeDuration = 120L
+                supportsChangeAnimations = false
+            }
             addItemDecoration(MaliPreferenceCards(requireContext()))
         }
     }

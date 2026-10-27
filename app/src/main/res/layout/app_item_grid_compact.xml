@@ -7,9 +7,9 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="5dp"
-    app:cardBackgroundColor="@color/mali_card"
+    app:cardBackgroundColor="?attr/colorSurfaceVariant"
     app:cardCornerRadius="20dp"
-    app:strokeColor="@color/mali_cyan">
+    app:strokeColor="?attr/colorPrimary">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"

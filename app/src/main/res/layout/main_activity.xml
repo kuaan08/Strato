@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/mali_library_background"
+    android:background="?android:attr/colorBackground"
     android:fitsSystemWindows="true"
     tools:context=".MainActivity">
 
@@ -37,21 +37,15 @@
                     android:src="@drawable/strato_mali_logo_transparent" />
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="12dp"
                     android:fontFamily="sans-serif-medium"
-                    android:text="Strato"
-                    android:textColor="@color/mali_text"
-                    android:textSize="25sp" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:fontFamily="sans-serif-medium"
-                    android:text=" Mali"
-                    android:textColor="@color/mali_cyan"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/app_name"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="25sp" />
 
                 <ImageButton
@@ -62,7 +56,7 @@
                     android:contentDescription="@string/search"
                     android:padding="12dp"
                     android:src="@drawable/ic_search"
-                    android:tint="@color/mali_text" />
+                    android:tint="?attr/colorOnSurface" />
 
                 <ImageButton
                     android:id="@+id/settings_icon"
@@ -73,7 +67,7 @@
                     android:contentDescription="@string/settings"
                     android:padding="12dp"
                     android:src="@drawable/ic_settings"
-                    android:tint="@color/mali_text" />
+                    android:tint="?attr/colorOnSurface" />
             </LinearLayout>
 
             <org.stratoemu.strato.views.SearchBarView
@@ -83,9 +77,9 @@
                 android:layout_marginHorizontal="18dp"
                 android:layout_marginBottom="14dp"
                 android:visibility="gone"
-                app:cardBackgroundColor="@color/mali_card"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant"
                 app:cardCornerRadius="24dp"
-                app:strokeColor="@color/mali_outline"
+                app:strokeColor="?attr/colorOutline"
                 app:strokeWidth="1dp" />
 
             <LinearLayout
@@ -113,7 +107,7 @@
                         android:ellipsize="end"
                         android:fontFamily="sans-serif-medium"
                         android:maxLines="1"
-                        android:textColor="@color/mali_text"
+                        android:textColor="?attr/colorOnSurface"
                         android:textSize="27sp"
                         tools:text="Celeste" />
 
@@ -126,7 +120,7 @@
                         android:paddingHorizontal="12dp"
                         android:paddingVertical="7dp"
                         android:text="@string/mali_ready"
-                        android:textColor="@color/mali_muted"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:textSize="12sp" />
                 </LinearLayout>
 
@@ -144,12 +138,12 @@
                         android:layout_weight="1.3"
                         android:text="@string/mali_play"
                         android:textAllCaps="false"
-                        android:textColor="@color/mali_text"
+                        android:textColor="?attr/colorOnPrimary"
                         android:textSize="16sp"
-                        app:backgroundTint="@color/mali_primary"
+                        app:backgroundTint="?attr/colorPrimary"
                         app:cornerRadius="27dp"
                         app:icon="@drawable/ic_play"
-                        app:iconTint="@color/mali_text" />
+                        app:iconTint="?attr/colorOnPrimary" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/details_button"
@@ -159,11 +153,11 @@
                         android:layout_weight="1"
                         android:text="@string/mali_details"
                         android:textAllCaps="false"
-                        android:textColor="@color/mali_text"
+                        android:textColor="?attr/colorOnSurface"
                         android:textSize="15sp"
-                        app:backgroundTint="@color/mali_card"
+                        app:backgroundTint="?attr/colorSurfaceVariant"
                         app:cornerRadius="27dp"
-                        app:strokeColor="@color/mali_outline"
+                        app:strokeColor="?attr/colorOutline"
                         app:strokeWidth="1dp" />
 
                     <ImageButton
@@ -175,7 +169,7 @@
                         android:contentDescription="@string/share_logs"
                         android:padding="12dp"
                         android:src="@drawable/ic_log"
-                        android:tint="@color/mali_text" />
+                        android:tint="?attr/colorOnSurface" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -186,7 +180,7 @@
                 android:layout_marginHorizontal="20dp"
                 android:layout_marginBottom="12dp"
                 android:text="@string/searching_roms"
-                android:textColor="@color/mali_muted"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="16sp" />
         </LinearLayout>
     </com.google.android.material.appbar.AppBarLayout>
@@ -225,7 +219,8 @@
             android:background="@drawable/mali_dock_active"
             android:drawableTop="@drawable/mali_ic_games"
             android:text="@string/mali_games"
-            android:textColor="@color/mali_cyan" />
+            android:drawableTint="?attr/colorOnPrimaryContainer"
+            android:textColor="?attr/colorOnPrimaryContainer" />
 
         <TextView
             android:id="@+id/nav_install"

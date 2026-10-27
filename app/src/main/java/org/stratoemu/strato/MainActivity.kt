@@ -17,11 +17,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.res.use
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowCompat
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceManager
+import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
@@ -41,6 +43,15 @@ import org.stratoemu.strato.utils.WindowInsetsHelper
 import javax.inject.Inject
 import kotlin.math.ceil
 import com.google.android.material.R as MaterialR
+
+private fun View.animateDockPress() {
+    animate().cancel()
+    scaleX = 1f
+    scaleY = 1f
+    animate().scaleX(0.96f).scaleY(0.96f).setDuration(75L).withEndAction {
+        animate().scaleX(1f).scaleY(1f).setDuration(125L).start()
+    }.start()
+}
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -116,9 +127,15 @@ class MainActivity : AppCompatActivity() {
         PreferenceManager.setDefaultValues(this, R.xml.app_preferences, false)
         PreferenceManager.setDefaultValues(this, R.xml.emulation_preferences, false)
 
-        // The library design intentionally does not show the app version.
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
+        // Match system-bar icon contrast to the active light/dark theme.
+        val backgroundColor = obtainStyledAttributes(intArrayOf(android.R.attr.colorBackground)).use {
+            it.getColor(0, Color.BLACK)
+        }
+        val useDarkSystemBarIcons = ColorUtils.calculateLuminance(backgroundColor) > 0.5
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = useDarkSystemBarIcons
+            isAppearanceLightNavigationBars = useDarkSystemBarIcons
+        }
 
         binding.appList.setHasFixedSize(true)
 
@@ -164,14 +181,21 @@ class MainActivity : AppCompatActivity() {
         binding.detailsButton.setOnClickListener { selectedGame?.let(::selectShowGameDialog) }
 
         binding.navGames.setOnClickListener {
+            binding.navGames.animateDockPress()
             if (binding.searchBar.isVisible) toggleSearch()
             binding.searchBar.text = ""
             binding.appBarLayout.setExpanded(true)
             binding.appList.smoothScrollToPosition(0)
         }
         // Game details already contain the DLC/Update installation action.
-        binding.navInstall.setOnClickListener { selectedGame?.let(::selectShowGameDialog) }
-        binding.navAdd.setOnClickListener { documentPicker.launch(null) }
+        binding.navInstall.setOnClickListener {
+            binding.navInstall.animateDockPress()
+            selectedGame?.let(::selectShowGameDialog)
+        }
+        binding.navAdd.setOnClickListener {
+            binding.navAdd.animateDockPress()
+            documentPicker.launch(null)
+        }
     }
 
     private fun setAppListDecoration() {
@@ -222,6 +246,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupAppList() {
         binding.appList.adapter = adapter
+        binding.appList.itemAnimator = DefaultItemAnimator().apply {
+            addDuration = 180L
+            removeDuration = 120L
+            moveDuration = 180L
+            changeDuration = 120L
+            supportsChangeAnimations = false
+        }
 
         val itemWidth = 225
         val metrics = resources.displayMetrics
@@ -280,9 +311,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSelectedGame(appItem : AppItem?, refreshGrid : Boolean = true) {
+        val previousKey = selectedGameKey
         selectedGame = appItem
         selectedGameKey = appItem?.key()
-        binding.featuredPanel.isVisible = appItem != null
+
+        val featuredPanel = binding.featuredPanel
+        featuredPanel.animate().cancel()
+        if (appItem != null) {
+            if (!featuredPanel.isVisible) {
+                featuredPanel.alpha = 0f
+                featuredPanel.translationY = 8f * resources.displayMetrics.density
+            }
+            featuredPanel.isVisible = true
+            featuredPanel.animate().alpha(1f).translationY(0f).setDuration(190L).start()
+        } else if (featuredPanel.isVisible) {
+            featuredPanel.animate().alpha(0f).translationY(-4f * resources.displayMetrics.density)
+                .setDuration(120L).withEndAction {
+                    featuredPanel.isVisible = false
+                    featuredPanel.alpha = 1f
+                    featuredPanel.translationY = 0f
+                }.start()
+        }
         binding.featuredTitle.text = appItem?.title.orEmpty()
         val playable = appItem?.loaderResult == LoaderResult.Success
         binding.featuredStatus.text = if (playable) getString(R.string.mali_ready)
@@ -290,8 +339,11 @@ class MainActivity : AppCompatActivity() {
         binding.playButton.isEnabled = playable
         binding.detailsButton.isEnabled = appItem != null
         binding.navInstall.isEnabled = appItem != null
-        if (refreshGrid && adapter.itemCount > 0) {
-            adapter.notifyItemRangeChanged(0, adapter.itemCount)
+        if (refreshGrid && adapter.itemCount > 0 && previousKey != selectedGameKey) {
+            listOfNotNull(previousKey, selectedGameKey).distinct().forEach { key ->
+                val position = adapter.currentItems.indexOfFirst { it.key() == key }
+                if (position >= 0) adapter.notifyItemChanged(position)
+            }
         }
     }
 
