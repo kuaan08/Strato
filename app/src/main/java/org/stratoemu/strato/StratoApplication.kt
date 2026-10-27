@@ -52,9 +52,9 @@ class StratoApplication : Application() {
                 if (settings.useMaterialYou) return
 
                 val paletteOverlay = when (settings.appColorPalette) {
-                    1 -> R.style.ThemeOverlay_Strato_Palette_Emerald
-                    2 -> R.style.ThemeOverlay_Strato_Palette_Violet
-                    3 -> R.style.ThemeOverlay_Strato_Palette_Amoled
+                    1 -> R.style.StratoPaletteEmerald
+                    2 -> R.style.StratoPaletteViolet
+                    3 -> R.style.StratoPaletteAmoled
                     else -> 0 // The default Strato blue palette is already defined by AppTheme.
                 }
                 if (paletteOverlay != 0) activity.theme.applyStyle(paletteOverlay, true)

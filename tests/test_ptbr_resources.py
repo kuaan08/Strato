@@ -78,6 +78,15 @@ def main() -> None:
     gradle = (ROOT / "app/build.gradle").read_text(encoding="utf-8")
     assert '"pt-BR"' in gradle, "pt-BR is not included in BuildConfig.AVAILABLE_APP_LANGUAGES"
 
+    palette_names = {"StratoPaletteEmerald", "StratoPaletteViolet", "StratoPaletteAmoled"}
+    for palette_file in ("values/theme_palettes.xml", "values-night/theme_palettes.xml"):
+        palette_root = ET.parse(ROOT / "app/src/main/res" / palette_file).getroot()
+        defined = {item.attrib.get("name") for item in palette_root.findall("style")}
+        assert defined == palette_names, f"{palette_file}: palette style names differ"
+    application = (ROOT / "app/src/main/java/org/stratoemu/strato/StratoApplication.kt").read_text(encoding="utf-8")
+    for name in palette_names:
+        assert f"R.style.{name}" in application, f"Palette style is not mapped: {name}"
+
     print(
         f"pt-BR resource validation passed: {sum(len(named_resources(PT_BR / f, ('string',))) for f in RESOURCE_FILES)} strings, "
         f"{len(pt_arrays)} arrays, locale registered"

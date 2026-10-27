@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="ThemeOverlay.Strato.Palette.Emerald">
+    <style name="StratoPaletteEmerald">
         <item name="colorPrimary">#70DDB0</item>
         <item name="colorOnPrimary">#003824</item>
         <item name="colorPrimaryContainer">#005237</item>
@@ -15,7 +15,7 @@
         <item name="colorOnTertiaryContainer">#BFEAF5</item>
         <item name="colorAccent">#70DDB0</item>
     </style>
-    <style name="ThemeOverlay.Strato.Palette.Violet">
+    <style name="StratoPaletteViolet">
         <item name="colorPrimary">#D0BCFF</item>
         <item name="colorOnPrimary">#381E72</item>
         <item name="colorPrimaryContainer">#4F378A</item>
@@ -30,7 +30,7 @@
         <item name="colorOnTertiaryContainer">#FFD9E4</item>
         <item name="colorAccent">#D0BCFF</item>
     </style>
-    <style name="ThemeOverlay.Strato.Palette.Amoled">
+    <style name="StratoPaletteAmoled">
         <item name="colorPrimary">#AFC6FF</item>
         <item name="colorOnPrimary">#002D6B</item>
         <item name="colorPrimaryContainer">#00429A</item>
