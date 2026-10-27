@@ -7,6 +7,7 @@
 #include "types/KThread.h"
 #include "scheduler.h"
 #include "scheduler_timing.h"
+#include "scheduler_wake.h"
 
 namespace skyline::kernel {
     Scheduler::CoreContext::CoreContext(u8 id, i8 preemptionPriority) : id(id), preemptionPriority(preemptionPriority) {}
@@ -361,12 +362,19 @@ namespace skyline::kernel {
             auto &core{cores.at(thread->coreId)};
             std::unique_lock coreLock(core.mutex);
             auto nextThread{core.queue.size() > 1 ? *std::next(core.queue.begin()) : nullptr};
-            nextThread = nextThread->priority == thread->priority ? nextThread : nullptr; // If the next thread doesn't have the same priority then it won't be scheduled next
             auto parkedThread{parkedQueue.front()};
+            const auto currentPriority{thread->priority.load()};
+            const auto parkedPriority{parkedThread->priority.load()};
+            const auto nextThreadHasSamePriority{nextThread && nextThread->priority.load() == currentPriority};
 
             // We need to be conservative about waking up a parked thread, it should only be done if its priority is higher than the current thread
             // Alternatively, it should be done if its priority is equivalent to the current thread's priority but the next thread had been scheduled prior or if there is no next thread (Current thread would be rescheduled)
-            if (parkedThread->priority < thread->priority || (parkedThread->priority == thread->priority && (!nextThread || parkedThread->timesliceStart < nextThread->timesliceStart))) {
+            if (ShouldWakeParkedThreadForTimeslice(
+                    parkedPriority,
+                    currentPriority,
+                    nextThreadHasSamePriority,
+                    parkedThread->timesliceStart,
+                    nextThreadHasSamePriority ? nextThread->timesliceStart : 0)) {
                 parkedThread->coreId = thread->coreId;
                 parkedLock.unlock();
                 parkedThread->scheduleCondition.notify();

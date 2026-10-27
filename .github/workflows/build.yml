@@ -66,6 +66,9 @@ jobs:
       - name: Check Adreno branding and packaging
         run: python3 tests/test_adreno_branding.py
 
+      - name: Check Vulkan system-driver discovery fallback
+        run: python3 tests/test_gpu_driver_discovery.py
+
       - name: Check Brazilian Portuguese resources
         run: python3 tests/test_ptbr_resources.py
 
@@ -82,6 +85,9 @@ jobs:
         run: |
           python3 tests/test_frame_pacing.py
           python3 tests/test_scheduler_timing.py
+          python3 tests/test_scheduler_wake.py
+          python3 tests/test_pipeline_cache_file.py
+          python3 tests/test_resolution_scaling.py
 
       - name: Run Android unit tests and build release APK
         env:

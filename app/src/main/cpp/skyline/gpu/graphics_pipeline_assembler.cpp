@@ -4,8 +4,10 @@
 #include <boost/functional/hash.hpp>
 #include <fstream>
 #include <filesystem>
+#include <system_error>
 #include <gpu.h>
 #include "graphics_pipeline_assembler.h"
+#include "pipeline_cache_file.h"
 #include "trait_manager.h"
 
 namespace skyline::gpu {
@@ -29,16 +31,6 @@ namespace skyline::gpu {
         }
     };
 
-    /**
-     * @brief Header that precedes serialized pipeline cache data in the pipeline cache file
-     */
-    struct PipelineCacheFileDataHeader {
-        u64 size;
-        u64 hash;
-        u8 data[];
-    };
-    static_assert(sizeof(PipelineCacheFileDataHeader) == 0x10);
-
     static vk::raii::PipelineCache DeserialisePipelineCache(GPU &gpu, std::string_view pipelineCacheDir) {
         std::filesystem::create_directories(pipelineCacheDir);
         PipelineCacheFileNameHeader expectedFilenameHeader{gpu.traits};
@@ -53,11 +45,28 @@ namespace skyline::gpu {
             return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
         }
 
+        std::error_code fileSizeError;
+        const auto fileSize{std::filesystem::file_size(path, fileSizeError)};
+        if (fileSizeError) {
+            LOGW("Failed to determine Vulkan pipeline cache size!");
+            return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
+        }
+
         PipelineCacheFileDataHeader header{};
         stream.read(reinterpret_cast<char *>(&header), sizeof(PipelineCacheFileDataHeader));
+        if (!stream || !IsPipelineCachePayloadSizeValid(fileSize, header.size)) {
+            LOGW("Ignoring malformed Vulkan pipeline cache file!");
+            return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
+        }
 
-        std::vector<u8> readData(header.size);
-        stream.read(reinterpret_cast<char *>(readData.data()), static_cast<std::streamsize>(header.size));
+        std::vector<u8> readData(static_cast<std::size_t>(header.size));
+        if (!readData.empty()) {
+            stream.read(reinterpret_cast<char *>(readData.data()), static_cast<std::streamsize>(readData.size()));
+            if (stream.gcount() != static_cast<std::streamsize>(readData.size())) {
+                LOGW("Ignoring truncated Vulkan pipeline cache payload!");
+                return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
+            }
+        }
 
         if (header.hash != XXH64(readData.data(), readData.size(), 0)) {
             LOGW("Ignoring invalid pipeline cache file!");
