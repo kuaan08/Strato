@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setup_welcome">Boas-vindas ao\nStrato Adreno</string>
+    <string name="setup_intro">Selecione suas chaves, o firmware e a pasta dos jogos para começar.</string>
+    <string name="setup_keys">1. Selecionar prod.keys</string>
+    <string name="setup_firmware">2. Instalar firmware</string>
+    <string name="setup_games">3. Selecionar pasta dos jogos</string>
+    <string name="setup_keys_help">Obrigatório · Importe seu arquivo prod.keys.</string>
+    <string name="setup_firmware_help">Recomendado · Selecione um ZIP de firmware. Você também pode instalá-lo mais tarde em Configurações.</string>
+    <string name="setup_games_help">Escolha a pasta que contém seus jogos.</string>
+    <string name="setup_keys_ready">Chaves importadas</string>
+    <string name="setup_folder_ready">Pasta dos jogos selecionada</string>
+    <string name="setup_firmware_installed">Firmware %1$s instalado</string>
+    <string name="setup_start">Começar a jogar</string>
+    <string name="setup_back">Voltar</string>
+    <string name="setup_importing_keys">Importando chaves…</string>
+    <string name="setup_checking_folder">Verificando a pasta dos jogos…</string>
+    <string name="setup_unreadable_folder">Não é possível ler a pasta selecionada</string>
+    <string name="setup_failed">Falha na importação: %1$s</string>
+    <string name="setup_open">Abrir configuração</string>
+</resources>

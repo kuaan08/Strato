@@ -60,7 +60,7 @@
     <string name="appearance">Appearance</string>
     <string name="theme">Theme</string>
     <string name="use_material_you">Use Material You</string>
-    <string name="use_material_you_desc_off">Strato Adreno colors will be used</string>
+    <string name="use_material_you_desc_off">The selected Strato Adreno color palette will be used</string>
     <string name="use_material_you_desc_on">Material You will be used</string>
     <string name="app_language">App Language</string>
     <string name="app_language_default">Use System Default</string>
@@ -340,4 +340,16 @@
     <string name="game_content_installed">DLC/Update installed. It will be applied when you start the game.</string>
     <string name="game_content_already_installed">This content is already installed.</string>
     <string name="game_content_install_failed">Could not install DLC/Update</string>
+    <string name="color_palette">Color palette</string>
+    <string name="color_palette_summary">Choose the app colors. AMOLED black applies in dark mode; Material You takes priority when enabled.</string>
+    <string name="gpu_driver_author_package_version">v%1$s by %2$s</string>
+    <string name="gpu_driver_version_vendor">Driver: v%1$s • %2$s</string>
+    <string name="gpu_driver_deleted">%1$s deleted</string>
+    <string name="osc_debug_button_event">Timestamp: %1$d\nButton: %2$s\n%3$s</string>
+    <string name="osc_debug_stick_event">Timestamp: %1$d\nStick: %2$s\nX: %3$s\nY: %4$s</string>
+    <string name="unknown_error">Unknown error</string>
+    <string name="mod_update_failed">Failed to update mod</string>
+    <string name="mod_delete_failed">Could not delete mod</string>
+    <string name="error_check_log">Check the log for technical details.</string>
+    <string name="selected_folder_cannot_be_read">The selected folder cannot be read.</string>
 </resources>

@@ -5,9 +5,9 @@
 
 package org.stratoemu.strato.adapter
 
-import android.annotation.SuppressLint
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import org.stratoemu.strato.R
 import org.stratoemu.strato.data.GpuDriverMetadata
 import org.stratoemu.strato.databinding.GpuDriverItemBinding
 
@@ -25,21 +25,28 @@ open class GpuDriverViewItem(
 
     override fun getViewBindingFactory() = GpuDriverBindingFactory
 
-    @SuppressLint("SetTextI18n")
     override fun bind(holder : GenericViewHolder<GpuDriverItemBinding>, position : Int) {
         this.holder = holder
         val binding = holder.binding
 
         binding.name.text = driverMetadata.name
 
-        if (driverMetadata.packageVersion.isNotBlank() || driverMetadata.packageVersion.isNotBlank()) {
-            binding.authorPackageVersion.text = "v${driverMetadata.packageVersion} by ${driverMetadata.author}"
+        if (driverMetadata.packageVersion.isNotBlank() || driverMetadata.author.isNotBlank()) {
+            binding.authorPackageVersion.text = binding.root.context.getString(
+                R.string.gpu_driver_author_package_version,
+                driverMetadata.packageVersion,
+                driverMetadata.author
+            )
             binding.authorPackageVersion.visibility = ViewGroup.VISIBLE
         } else {
             binding.authorPackageVersion.visibility = ViewGroup.GONE
         }
 
-        binding.vendorDriverVersion.text = "Driver: v${driverMetadata.driverVersion} • ${driverMetadata.vendor}"
+        binding.vendorDriverVersion.text = binding.root.context.getString(
+            R.string.gpu_driver_version_vendor,
+            driverMetadata.driverVersion,
+            driverMetadata.vendor
+        )
         binding.description.text = driverMetadata.description
         binding.radioButton.isChecked = position == selectableAdapter?.selectedPosition
 

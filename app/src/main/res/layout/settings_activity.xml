@@ -4,7 +4,7 @@
     android:id="@+id/coordinator_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/mali_settings_background">
+    android:background="?android:attr/colorBackground">
     <include android:id="@+id/titlebar" layout="@layout/titlebar" />
     <LinearLayout
         android:id="@+id/settings_container"
@@ -26,12 +26,12 @@
                 app:cardCornerRadius="24dp"
                 app:cardElevation="0dp"
                 app:strokeWidth="1dp"
-                app:strokeColor="@color/settings_outline"
-                app:cardBackgroundColor="@color/settings_container_blue">
+                app:strokeColor="?attr/colorOutline"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant">
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@drawable/mali_settings_header_background"
+                    android:background="?attr/colorSurfaceVariant"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
                     android:paddingHorizontal="22dp"
@@ -47,7 +47,7 @@
                         android:layout_marginStart="16dp"
                         android:layout_weight="1"
                         android:text="@string/app_name"
-                        android:textColor="@color/settings_on_container"
+                        android:textColor="?attr/colorOnSurface"
                         android:textAppearance="?attr/textAppearanceTitleLarge"
                         android:textSize="26sp"
                         android:textStyle="bold" />
@@ -60,9 +60,9 @@
                 android:background="@android:color/transparent"
                 app:tabMode="scrollable"
                 app:tabGravity="start"
-                app:tabTextColor="@color/settings_secondary_text"
-                app:tabSelectedTextColor="@color/settings_on_container"
-                app:tabIndicator="@drawable/mali_settings_tab_indicator"
+                app:tabTextColor="?attr/colorOnSurfaceVariant"
+                app:tabSelectedTextColor="?attr/colorOnSurface"
+                app:tabIndicatorColor="?attr/colorPrimary"
                 app:tabIndicatorGravity="stretch"
                 app:tabIndicatorFullWidth="true"
                 app:tabInlineLabel="true"
@@ -74,7 +74,7 @@
                 android:paddingHorizontal="20dp"
                 android:paddingTop="18dp"
                 android:paddingBottom="14dp"
-                android:textColor="@color/settings_secondary_text"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textAppearance="?attr/textAppearanceBodyMedium" />
         </LinearLayout>
         <FrameLayout

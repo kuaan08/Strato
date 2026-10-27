@@ -91,7 +91,7 @@ class GpuDriverActivity : AppCompatActivity() {
                     if (wasChecked)
                         emulationSettings.gpuDriver = EmulationSettings.SYSTEM_GPU_DRIVER
 
-                    Snackbar.make(binding.root, "${metadata.label} deleted", Snackbar.LENGTH_LONG).setAction(R.string.undo) {
+                    Snackbar.make(binding.root, getString(R.string.gpu_driver_deleted, metadata.label), Snackbar.LENGTH_LONG).setAction(R.string.undo) {
                         this@GpuDriverActivity.adapter.run {
                             addItemAt(position, this@apply)
                             // If the item was selected before removal, set it back as the active one when undoing
@@ -125,7 +125,6 @@ class GpuDriverActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState : Bundle?) {
-        theme.applyStyle(R.style.SettingsBlueTheme, true)
         super.onCreate(savedInstanceState)
 
         setContentView(binding.root)
@@ -202,4 +201,3 @@ class GpuDriverActivity : AppCompatActivity() {
         GpuDriverInstallResult.AlreadyInstalled -> getString(R.string.gpu_driver_install_already_installed)
     }
 }
-

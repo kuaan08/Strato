@@ -145,12 +145,12 @@ class OnScreenEditActivity : AppCompatActivity() {
         binding.closeButton.setOnClickListener { togglePanelVisibility() }
 
         binding.onScreenControllerView.setOnButtonStateChangedListener { buttonId, state ->
-            binding.lastInputEvent.text = "Timestamp: ${System.currentTimeMillis()}\nButton: ${buttonId.short}\n$state"
+            binding.lastInputEvent.text = getString(R.string.osc_debug_button_event, System.currentTimeMillis(), buttonId.short, state)
         }
         binding.onScreenControllerView.setOnStickStateChangedListener { stickId, position ->
             val x = "%9.6f".format(position.x)
             val y = "%9.6f".format(position.y)
-            binding.lastInputEvent.text = "Timestamp: ${System.currentTimeMillis()}\nStick: ${stickId.button.short}\nX: $x\nY: $y"
+            binding.lastInputEvent.text = getString(R.string.osc_debug_stick_event, System.currentTimeMillis(), stickId.button.short, x, y)
         }
 
         binding.onScreenControllerView.setEditMode(true)

@@ -63,9 +63,8 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
 
     /**
      * This initializes all of the elements in the activity and displays the settings fragment
-     */
+    */
     override fun onCreate(savedInstanceState : Bundle?) {
-        theme.applyStyle(R.style.SettingsBlueTheme, true)
         super.onCreate(savedInstanceState)
 
         setContentView(binding.root)
@@ -276,4 +275,3 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         }
     }
 }
-

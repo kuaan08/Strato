@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_hub_title">Configurações</string>
+    <string name="settings_version_label">Versão %1$s</string>
+    <string name="settings_tab_graphics">Gráficos</string>
+    <string name="settings_tab_gpu">GPU</string>
+    <string name="settings_tab_folders">Pastas de jogos</string>
+    <string name="settings_tab_drivers">Drivers gráficos</string>
+    <string name="settings_tab_general">Geral</string>
+    <string name="settings_graphics_summary">Tela, proporção, estatísticas de quadros e cache de shaders.</string>
+    <string name="settings_gpu_summary">Bufferização, memória da GPU e opções avançadas de compatibilidade.</string>
+    <string name="settings_folders_summary">Escolha a pasta de jogos e controle quais arquivos aparecem na biblioteca.</string>
+    <string name="settings_drivers_summary">Importe, selecione ou remova pacotes de driver gráfico.</string>
+    <string name="settings_general_summary">Sistema, áudio, controles, chaves, firmware e preferências do app.</string>
+</resources>

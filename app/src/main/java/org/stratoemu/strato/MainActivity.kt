@@ -16,7 +16,6 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.res.use
 import androidx.core.view.WindowCompat
 import androidx.core.view.isInvisible
@@ -80,7 +79,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (!usableDirectory)
-                    throw IllegalArgumentException("Selected folder cannot be read")
+                    throw IllegalArgumentException(getString(R.string.selected_folder_cannot_be_read))
 
                 appSettings.searchLocation = uri.toString()
                 loadRoms(false)
@@ -107,15 +106,6 @@ class MainActivity : AppCompatActivity() {
     private fun AppItem.toViewItem() = AppViewItem(layoutType, this, ::selectGame, ::selectShowGameDialog) { selectedGameKey == it.key() }
 
     override fun onCreate(savedInstanceState : Bundle?) {
-        // Need to create new instance of settings, dependency injection happens
-        AppCompatDelegate.setDefaultNightMode(
-            when ((AppSettings(this).appTheme)) {
-                0 -> AppCompatDelegate.MODE_NIGHT_NO
-                1 -> AppCompatDelegate.MODE_NIGHT_YES
-                2 -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-                else -> AppCompatDelegate.MODE_NIGHT_UNSPECIFIED
-            }
-        )
         super.onCreate(savedInstanceState)
 
         setContentView(binding.root)

@@ -22,6 +22,18 @@
         <item>Dark</item>
         <item>Use System Default</item>
     </string-array>
+    <string-array name="app_color_palette">
+        <item>Strato Blue</item>
+        <item>Emerald</item>
+        <item>Violet</item>
+        <item>AMOLED Black (Dark Mode)</item>
+    </string-array>
+    <integer-array name="app_color_palette_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </integer-array>
     <string-array name="system_languages">
         <item>American English</item>
         <item>British English</item>

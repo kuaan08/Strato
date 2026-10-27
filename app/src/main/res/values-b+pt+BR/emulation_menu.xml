@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="emulation_menu">Strato Adreno</string>
+    <string name="emulation_resume">Continuar jogo</string>
+    <string name="emulation_controls">Controles na tela</string>
+    <string name="emulation_fps">Mostrar FPS</string>
+    <string name="emulation_mute">Silenciar áudio</string>
+    <string name="emulation_exit">Sair do jogo</string>
+    <string name="emulation_exit_message">Sair deste jogo? O progresso não salvo será perdido.</string>
+</resources>

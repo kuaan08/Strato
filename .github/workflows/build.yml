@@ -66,6 +66,9 @@ jobs:
       - name: Check Adreno branding and packaging
         run: python3 tests/test_adreno_branding.py
 
+      - name: Check Brazilian Portuguese resources
+        run: python3 tests/test_ptbr_resources.py
+
       - name: Run deterministic native regression tests
         run: |
           python3 tests/test_frame_pacing.py

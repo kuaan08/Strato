@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="ThemeOverlay.Strato.Palette.Emerald">
+        <item name="colorPrimary">#70DDB0</item>
+        <item name="colorOnPrimary">#003824</item>
+        <item name="colorPrimaryContainer">#005237</item>
+        <item name="colorOnPrimaryContainer">#8AF8C5</item>
+        <item name="colorSecondary">#B4CCBE</item>
+        <item name="colorOnSecondary">#20352A</item>
+        <item name="colorSecondaryContainer">#364B3F</item>
+        <item name="colorOnSecondaryContainer">#D0E8D8</item>
+        <item name="colorTertiary">#A3CED9</item>
+        <item name="colorOnTertiary">#003640</item>
+        <item name="colorTertiaryContainer">#1D4D58</item>
+        <item name="colorOnTertiaryContainer">#BFEAF5</item>
+        <item name="colorAccent">#70DDB0</item>
+    </style>
+    <style name="ThemeOverlay.Strato.Palette.Violet">
+        <item name="colorPrimary">#D0BCFF</item>
+        <item name="colorOnPrimary">#381E72</item>
+        <item name="colorPrimaryContainer">#4F378A</item>
+        <item name="colorOnPrimaryContainer">#EADDFF</item>
+        <item name="colorSecondary">#CCC2DC</item>
+        <item name="colorOnSecondary">#332D41</item>
+        <item name="colorSecondaryContainer">#4A4458</item>
+        <item name="colorOnSecondaryContainer">#E8DEF8</item>
+        <item name="colorTertiary">#EFB8C8</item>
+        <item name="colorOnTertiary">#492532</item>
+        <item name="colorTertiaryContainer">#633B48</item>
+        <item name="colorOnTertiaryContainer">#FFD9E4</item>
+        <item name="colorAccent">#D0BCFF</item>
+    </style>
+    <style name="ThemeOverlay.Strato.Palette.Amoled">
+        <item name="colorPrimary">#AFC6FF</item>
+        <item name="colorOnPrimary">#002D6B</item>
+        <item name="colorPrimaryContainer">#00429A</item>
+        <item name="colorOnPrimaryContainer">#D9E4FF</item>
+        <item name="colorSecondary">#75D1FF</item>
+        <item name="colorOnSecondary">#003548</item>
+        <item name="colorSecondaryContainer">#004D68</item>
+        <item name="colorOnSecondaryContainer">#C5E7FF</item>
+        <item name="colorTertiary">#AFC6FF</item>
+        <item name="colorOnTertiary">#002E69</item>
+        <item name="colorTertiaryContainer">#164584</item>
+        <item name="colorOnTertiaryContainer">#D8E2FF</item>
+        <item name="colorAccent">#AFC6FF</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="colorSurface">#000000</item>
+        <item name="colorSurfaceVariant">#111319</item>
+        <item name="colorOnSurface">#E4E8F2</item>
+        <item name="colorOnSurfaceVariant">#C1C7D3</item>
+        <item name="colorOutline">#8B929E</item>
+        <item name="colorOutlineVariant">#30333B</item>
+    </style>
+</resources>

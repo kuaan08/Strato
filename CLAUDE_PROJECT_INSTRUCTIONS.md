@@ -8,7 +8,7 @@ Preparar e melhorar esta variante para GPUs Adreno em Android, começando pela v
 
 ## Estado atual
 
-- O projeto já compila pelo GitHub Actions. O workflow `.github/workflows/build.yml` executa testes host de branding, frame pacing e scheduler, testes unitários Android e compila `assembleMainlineRelease` em pushes e pull requests para `main`, em branches `release/**` e sob execução manual.
+- O projeto já compila pelo GitHub Actions. O workflow `.github/workflows/build.yml` executa testes host de branding, tradução pt-BR, frame pacing e scheduler, testes unitários Android e compila `assembleMainlineRelease` em pushes e pull requests para `main`, em branches `release/**` e sob execução manual.
 - O APK fica no artefato `Strato-Adreno-APK` da execução do Actions. É assinado com a chave de depuração do Gradle e serve para testes; não é uma build de distribuição assinada.
 - O `applicationId` atual é `org.stratoemu.stratoadreno`. O namespace e os pacotes Kotlin/C++ continuam `org.stratoemu.strato`/Strato por compatibilidade interna. Não os renomeie sem necessidade demonstrada.
 - O identificador de pacote é diferente da antiga variante Mali. Instalação paralela é possível, mas os dados e saves internos não são migrados automaticamente entre pacotes.
@@ -17,6 +17,8 @@ Preparar e melhorar esta variante para GPUs Adreno em Android, começando pela v
 - Parte de nomes de arquivos, recursos visuais e estilos herdados ainda pode conter referências históricas a Mali. Preserve os créditos e avisos legais; não faça substituições globais cegas.
 - A compilação de CI foi confirmada com sucesso no commit `0303c3f6` (execução Actions 40527341822). Isso confirma build e testes de CI, não compatibilidade ou desempenho no Poco.
 - O scheduler usa helpers puros em `app/src/main/cpp/skyline/kernel/scheduler_timing.h` para a EWMA da duração real e a estimativa saturada de timeslice restante; `tests/test_scheduler_timing.py` valida os limites com ASan/UBSan. A correção não prova, por si só, ganho de desempenho em jogos.
+- A interface inclui português brasileiro em `app/src/main/res/values-b+pt+BR/`, registrado em `locales_config.xml` e no seletor de idioma do app. O teste `tests/test_ptbr_resources.py` confere cobertura das strings, placeholders, arrays e registro do locale; textos de licenças e mensagens internas de log podem continuar no idioma original.
+- As paletas de cores Strato Blue, Emerald, Violet e AMOLED (modo escuro) são definidas em `theme_palettes.xml` e escolhidas pela preferência `app_color_palette`. Material You tem prioridade quando ativo. O valor padrão continua preservando a aparência azul anterior.
 
 ## Compilação e verificações
 
@@ -34,7 +36,7 @@ Para rodar os testes de unidade usados pelo CI:
 ./gradlew testMainlineReleaseUnitTest
 ```
 
-O workflow também executa `python3 tests/test_adreno_branding.py`, `python3 tests/test_frame_pacing.py` e `python3 tests/test_scheduler_timing.py`. Faça alterações pequenas, rode os testes relevantes e confira `git diff --check`. Em alterações nativas, garanta que o workflow inteiro — incluindo compilação C/C++ via CMake — continue passando.
+O workflow também executa `python3 tests/test_adreno_branding.py`, `python3 tests/test_ptbr_resources.py`, `python3 tests/test_frame_pacing.py` e `python3 tests/test_scheduler_timing.py`. Faça alterações pequenas, rode os testes relevantes e confira `git diff --check`. Em alterações nativas, garanta que o workflow inteiro — incluindo compilação C/C++ via CMake — continue passando.
 
 ## Regras para otimização no Poco X5 Pro
 

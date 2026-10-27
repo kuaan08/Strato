@@ -38,6 +38,13 @@
             app:key="app_theme"
             app:title="@string/theme"
             app:useSimpleSummaryProvider="true" />
+        <org.stratoemu.strato.preference.IntegerListPreference
+            android:defaultValue="0"
+            android:entries="@array/app_color_palette"
+            android:entryValues="@array/app_color_palette_values"
+            app:key="app_color_palette"
+            app:summary="@string/color_palette_summary"
+            app:title="@string/color_palette" />
         <SwitchPreferenceCompat
             android:defaultValue="false"
             app:key="use_material_you"

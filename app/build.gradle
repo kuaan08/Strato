@@ -34,7 +34,7 @@ android {
         // Disable the use of a separate process for emulation by default
         manifestPlaceholders["emulationProcess"] = ""
 
-        def locales = ["en", "de", "el", "es", "es-419", "fr", "hu", "id", "it", "ja", "ko", "pl", "ru", "ta", "zh-Hans", "zh-Hant"]
+        def locales = ["en", "de", "el", "es", "es-419", "fr", "hu", "id", "it", "ja", "ko", "pl", "pt-BR", "ru", "ta", "zh-Hans", "zh-Hant"]
 
         // Add available locales to the build config so that they can be accessed from the app
         buildConfigField "String[]", "AVAILABLE_APP_LANGUAGES", "new String[]{\"" + locales.join("\",\"") + "\"}"

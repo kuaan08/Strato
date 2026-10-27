@@ -10,7 +10,7 @@ import androidx.preference.PreferenceGroupAdapter
 import androidx.recyclerview.widget.RecyclerView
 
 /**
- * Lightweight settings-only decoration: navy rounded rows with blue outlines.
+ * Lightweight settings-only decoration: rounded rows using the active Material color scheme.
  * Does not alter Preference IDs, click listeners, switches, or saved settings.
  */
 class MaliPreferenceCards(context: Context) : RecyclerView.ItemDecoration() {
@@ -18,11 +18,21 @@ class MaliPreferenceCards(context: Context) : RecyclerView.ItemDecoration() {
     private val gap = (6 * density).toInt()
     private val side = 12 * density
     private val radius = 18 * density
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.rgb(15, 38, 77) }
+    private val themeColors = context.obtainStyledAttributes(intArrayOf(
+        com.google.android.material.R.attr.colorSurfaceVariant,
+        com.google.android.material.R.attr.colorOutline
+    ))
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = themeColors.getColor(0, android.graphics.Color.DKGRAY)
+    }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.rgb(39, 101, 170)
+        color = themeColors.getColor(1, android.graphics.Color.GRAY)
         style = Paint.Style.STROKE
         strokeWidth = density
+    }
+
+    init {
+        themeColors.recycle()
     }
 
     private fun category(parent: RecyclerView, position: Int): Boolean {

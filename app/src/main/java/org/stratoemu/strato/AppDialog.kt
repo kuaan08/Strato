@@ -124,7 +124,8 @@ class AppDialog : BottomSheetDialogFragment() {
                     } catch (e : CancellationException) {
                         throw e
                     } catch (e : Exception) {
-                        failures.add("${index + 1}: ${e.message ?: "Unknown error"}")
+                        android.util.Log.e("StratoAdreno", "Failed to install game content package ${index + 1}", e)
+                        failures.add("${index + 1}: ${getString(R.string.unknown_error)}")
                     }
                 }
                 if (isAdded && view != null) {
@@ -136,7 +137,8 @@ class AppDialog : BottomSheetDialogFragment() {
             } catch (e : CancellationException) {
                 throw e
             } catch (e : Exception) {
-                if (isAdded && view != null) AlertDialog.Builder(requireContext()).setTitle(R.string.game_content_install_failed).setMessage(e.message).setPositiveButton(android.R.string.ok, null).show()
+                android.util.Log.e("StratoAdreno", "Failed to install game content", e)
+                if (isAdded && view != null) AlertDialog.Builder(requireContext()).setTitle(R.string.game_content_install_failed).setMessage(R.string.error_check_log).setPositiveButton(android.R.string.ok, null).show()
             } finally {
                 dialog.dismiss()
                 installingContent = false
@@ -166,8 +168,9 @@ class AppDialog : BottomSheetDialogFragment() {
                 else GameModUtils.install(context, titleId, uri)
                 if (isAdded && view != null) Snackbar.make(binding.root, R.string.game_mods_imported, Snackbar.LENGTH_LONG).show()
             } catch (e : Exception) {
+                android.util.Log.e("StratoAdreno", "Failed to install game mod", e)
                 if (isAdded && view != null) AlertDialog.Builder(requireContext())
-                    .setTitle(R.string.game_mods_fail).setMessage(e.message)
+                    .setTitle(R.string.game_mods_fail).setMessage(R.string.error_check_log)
                     .setPositiveButton(android.R.string.ok, null).show()
             } finally {
                 if (isAdded && view != null) {
@@ -190,7 +193,10 @@ class AppDialog : BottomSheetDialogFragment() {
             .setMessage(R.string.game_mods_notes)
             .setMultiChoiceItems(labels, enabled) { _, which, checked ->
                 try { GameModUtils.setEnabled(mods[which], checked); refreshMods() }
-                catch (e : Exception) { Snackbar.make(binding.root, e.message ?: "Failed to update mod", Snackbar.LENGTH_LONG).show() }
+                catch (e : Exception) {
+                    android.util.Log.e("StratoAdreno", "Failed to update game mod state", e)
+                    Snackbar.make(binding.root, R.string.mod_update_failed, Snackbar.LENGTH_LONG).show()
+                }
             }
             .setNeutralButton(R.string.game_mods_remove) { _, _ ->
                 val updated = GameModUtils.list(requireContext(), titleId)
@@ -201,7 +207,10 @@ class AppDialog : BottomSheetDialogFragment() {
                             .setNegativeButton(android.R.string.cancel, null)
                             .setPositiveButton(R.string.yes) { _, _ ->
                                 try { GameModUtils.remove(requireContext(), titleId, updated[index]); refreshMods() }
-                                catch (e : Exception) { Snackbar.make(binding.root, e.message ?: "Could not delete mod", Snackbar.LENGTH_LONG).show() }
+                                catch (e : Exception) {
+                                    android.util.Log.e("StratoAdreno", "Failed to delete game mod", e)
+                                    Snackbar.make(binding.root, R.string.mod_delete_failed, Snackbar.LENGTH_LONG).show()
+                                }
                             }.show()
                     }.setNegativeButton(android.R.string.cancel, null).show()
             }

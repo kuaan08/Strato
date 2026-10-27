@@ -87,12 +87,18 @@ class GlobalSettingsFragment : PreferenceFragmentCompat() {
         addPreferencesFromResource(R.xml.input_preferences)
         addPreferencesFromResource(R.xml.credits_preferences)
 
-        // Re-launch the app if Material You is toggled
-        findPreference<Preference>("use_material_you")?.setOnPreferenceChangeListener { _, _ ->
-            requireActivity().finishAffinity()
-            startActivity(Intent(requireContext(), MainActivity::class.java))
+        // Re-launch after appearance preferences are persisted so every Activity uses the new palette.
+        val restartForAppearanceChange = Preference.OnPreferenceChangeListener { _, _ ->
+            view?.post {
+                activity?.let { currentActivity ->
+                    currentActivity.finishAffinity()
+                    currentActivity.startActivity(Intent(currentActivity, MainActivity::class.java))
+                }
+            }
             true
         }
+        findPreference<Preference>("use_material_you")?.setOnPreferenceChangeListener(restartForAppearanceChange)
+        findPreference<Preference>("app_color_palette")?.setOnPreferenceChangeListener(restartForAppearanceChange)
 
 
         // Uncheck `disable_frame_throttling` if `force_triple_buffering` gets disabled
