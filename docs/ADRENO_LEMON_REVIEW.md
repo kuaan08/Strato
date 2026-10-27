@@ -20,6 +20,10 @@ Adicionei `tests/scheduler_timing_test.cpp` e `tests/test_scheduler_timing.py`, 
 
 Essa correção torna a estimativa do scheduler coerente e testável. Não foi medido FPS no aparelho, portanto não afirmo que ela aumente desempenho em jogos. O commit `f8433793` passou nos testes host, testes unitários Android e compilação Release de arm64; o Actions publicou o artefato `Strato-Adreno-APK` na [execução 40536567344](https://github.com/kuaan08/Strato/actions/runs/40536567344) [13]. Isso valida o build e os testes automatizados, não o desempenho ou a compatibilidade no Poco.
 
+## Primeiro teste manual informado
+
+O usuário relatou que testou o APK, que o aplicativo abre e que os jogos aparentemente iniciam/funcionam. Isso é um smoke test inicial promissor. Não foram informados o aparelho exato usado, títulos e cenas testados, driver Vulkan, duração, configurações, FPS/frametime, temperatura ou presença de artefatos; portanto, não deve ser interpretado como benchmark nem como validação ampla de compatibilidade.
+
 ## Próximos passos seguros
 
 1. Usar o APK produzido pela CI para identificar no próprio aparelho a versão de Android e o driver Vulkan efetivamente ativo. Guardar essas informações junto com o SHA do APK e uma cena/save repetível.
