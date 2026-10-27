@@ -18,7 +18,7 @@ Extraí o cálculo para helpers puros em `app/src/main/cpp/skyline/kernel/schedu
 
 Adicionei `tests/scheduler_timing_test.cpp` e `tests/test_scheduler_timing.py`, cobrindo EWMA, início sem histórico, saturação e limites de `uint64_t` com ASan/UBSan. Também acrescentei à CI os testes host de scheduler e frame pacing. O teste existente de frame pacing cobre intervalos e jitter em relógios de host diferentes [9]. Os dois testes passaram localmente, assim como os testes host de resolução, memória, diagnósticos e branding executados nesta sessão.
 
-Essa correção torna a estimativa do scheduler coerente e testável. Não foi medido FPS no aparelho, portanto não afirmo que ela aumente desempenho em jogos. O build Android do commit alterado ainda precisa concluir no GitHub Actions antes de considerar essa revisão validada ponta a ponta.
+Essa correção torna a estimativa do scheduler coerente e testável. Não foi medido FPS no aparelho, portanto não afirmo que ela aumente desempenho em jogos. O commit `f8433793` passou nos testes host, testes unitários Android e compilação Release de arm64; o Actions publicou o artefato `Strato-Adreno-APK` na [execução 40536567344](https://github.com/kuaan08/Strato/actions/runs/40536567344) [13]. Isso valida o build e os testes automatizados, não o desempenho ou a compatibilidade no Poco.
 
 ## Próximos passos seguros
 
@@ -46,3 +46,4 @@ Não forcei clocks, resolução ou afinidade de CPU. Não mudei heurísticas de 
 [10]: https://docs.qualcomm.com/bundle/publicresource/topics/80-78185-2/mobile_best_practices.html "Qualcomm Adreno GPU on Mobile: Best Practices"
 [11]: https://github.com/kuaan08/Strato/blob/main/LICENSE.md "Licença principal do Strato"
 [12]: https://github.com/Ghael-V/Lemon-Project/blob/25adc8800050828deb6f14123f6724bf92feec4b/LICENSE.txt "Licença principal do Lemon Project"
+[13]: https://github.com/kuaan08/Strato/actions/runs/40536567344 "GitHub Actions: build de arm64 e testes do commit f8433793"
