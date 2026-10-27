@@ -66,6 +66,11 @@ jobs:
       - name: Check Adreno branding and packaging
         run: python3 tests/test_adreno_branding.py
 
+      - name: Run deterministic native regression tests
+        run: |
+          python3 tests/test_frame_pacing.py
+          python3 tests/test_scheduler_timing.py
+
       - name: Run Android unit tests and build release APK
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache

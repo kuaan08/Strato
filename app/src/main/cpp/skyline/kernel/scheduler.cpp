@@ -6,6 +6,7 @@
 #include <common/trace.h>
 #include "types/KThread.h"
 #include "scheduler.h"
+#include "scheduler_timing.h"
 
 namespace skyline::kernel {
     Scheduler::CoreContext::CoreContext(u8 id, i8 preemptionPriority) : id(id), preemptionPriority(preemptionPriority) {}
@@ -52,14 +53,10 @@ namespace skyline::kernel {
                         auto threadIterator{candidateCore.queue.cbegin()};
                         if (threadIterator != candidateCore.queue.cend()) {
                             const auto &runningThread{*threadIterator};
-                            timeslice += [&]() {
-                                if (runningThread->averageTimeslice)
-                                    return std::min(runningThread->averageTimeslice - (util::GetTimeTicks() - runningThread->timesliceStart), 1UL);
-                                else if (runningThread->timesliceStart)
-                                    return util::GetTimeTicks() - runningThread->timesliceStart;
-                                else
-                                    return 1UL;
-                            }();
+                            const auto now{util::GetTimeTicks()};
+                            const auto elapsed{scheduler_detail::ElapsedTimeslice(now, runningThread->timesliceStart)};
+                            timeslice += scheduler_detail::EstimateRemainingTimeslice(
+                                runningThread->averageTimeslice, elapsed, runningThread->timesliceStart != 0);
 
                             while (++threadIterator != candidateCore.queue.cend()) {
                                 const auto &residentThread{*threadIterator};
@@ -251,7 +248,9 @@ namespace skyline::kernel {
             throw exception("T{} called Rotate while not being in C{}'s queue", thread->id, thread->coreId);
         }
 
-        thread->averageTimeslice = (thread->averageTimeslice / 4) + (3 * (util::GetTimeTicks() - thread->timesliceStart / 4));
+        const auto now{util::GetTimeTicks()};
+        const auto elapsed{scheduler_detail::ElapsedTimeslice(now, thread->timesliceStart)};
+        thread->averageTimeslice = scheduler_detail::UpdateAverageTimeslice(thread->averageTimeslice, elapsed);
 
         thread->DisarmPreemptionTimer(); // If a preemptive thread did a cooperative yield then we need to disarm the preemptive timer
         thread->pendingYield = false;
@@ -270,8 +269,11 @@ namespace skyline::kernel {
                     it = core.queue.erase(it);
                     if (it == core.queue.begin()) {
                         // We need to update the averageTimeslice accordingly, if we've been unscheduled by this
-                        if (thread->timesliceStart)
-                            thread->averageTimeslice = (thread->averageTimeslice / 4) + (3 * (util::GetTimeTicks() - thread->timesliceStart / 4));
+                        if (thread->timesliceStart) {
+                            const auto now{util::GetTimeTicks()};
+                            const auto elapsed{scheduler_detail::ElapsedTimeslice(now, thread->timesliceStart)};
+                            thread->averageTimeslice = scheduler_detail::UpdateAverageTimeslice(thread->averageTimeslice, elapsed);
+                        }
 
                         if (it != core.queue.end())
                             (*it)->scheduleCondition.notify(); // We need to wake the thread at the front of the queue, if we were at the front previously
