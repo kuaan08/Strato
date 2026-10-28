@@ -168,6 +168,7 @@
     <string name="delete_gpu_driver">Excluir este driver de GPU</string>
     <string name="system_driver">Driver do sistema</string>
     <string name="system_driver_desc">O driver da GPU fornecido pelo sistema</string>
+    <string name="gpu_driver_turnip_r8_fallback">Esta versão do Turnip v26.0.0 R8 foi relatada como muito defeituosa em emuladores de Switch. O Strato selecionou o driver do sistema.</string>
     <string name="install">Instalar</string>
     <string name="gpu_driver_install_inprogress">Instalando o driver da GPU…</string>
     <string name="gpu_driver_install_success">Driver da GPU instalado com sucesso</string>

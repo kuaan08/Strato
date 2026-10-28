@@ -2,6 +2,7 @@
 // Copyright © 2021 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include <dlfcn.h>
+#include <string_view>
 #include <unistd.h>
 #include <adrenotools/driver.h>
 #include <os.h>
@@ -342,6 +343,13 @@ namespace skyline::gpu {
         });
     }
 
+    // The v26.0.0 R8 package notes report very buggy rendering in Switch emulators.
+    static bool IsKnownSwitchIncompatibleTurnipR8(std::string_view driverLabel) {
+        return driverLabel.find("Turnip") != std::string_view::npos &&
+               driverLabel.find("26.0.0") != std::string_view::npos &&
+               driverLabel.find("R8") != std::string_view::npos;
+    }
+
     static PFN_vkGetInstanceProcAddr LoadVulkanDriver(const DeviceState &state, adrenotools_gpu_mapping *mapping) {
         void *libvulkanHandle{};
 
@@ -357,10 +365,13 @@ namespace skyline::gpu {
         if (hasMali)
             LOGI("Strato: Kbase device detected; KGSL mapping import disabled");
 
-        // If the user has selected a custom driver, try to load it.
-        if (!(*state.settings->gpuDriver).empty()) {
+        const auto &selectedDriver{*state.settings->gpuDriver};
+        if (IsKnownSwitchIncompatibleTurnipR8(selectedDriver)) {
+            LOGW("Skipping Turnip v26.0.0 R8, whose package notes report very buggy Switch rendering; using the system Vulkan driver");
+        } else if (!selectedDriver.empty()) {
+            // If the user has selected a custom driver, try to load it.
             LOGI("Strato Adreno: loading custom Vulkan driver {}/{}",
-                 *state.settings->gpuDriver, *state.settings->gpuDriverLibraryName);
+                 selectedDriver, *state.settings->gpuDriverLibraryName);
             libvulkanHandle = adrenotools_open_libvulkan(
                 RTLD_NOW,
                 commonFlags | ADRENOTOOLS_DRIVER_CUSTOM,

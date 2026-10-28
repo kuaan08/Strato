@@ -73,6 +73,7 @@ class GpuDriverActivity : AppCompatActivity() {
      */
     private fun populateAdapter() {
         val items : MutableList<GenericListItem<out ViewBinding>> = ArrayList()
+        var selectedUnsafeDriverFallback = false
 
         // Insert the system driver entry at the top of the list.
         items.add(GpuDriverViewItem(GpuDriverHelper.getSystemDriverMetadata(this)) {
@@ -112,16 +113,30 @@ class GpuDriverActivity : AppCompatActivity() {
                 } else null
 
                 onClick = {
-                    emulationSettings.gpuDriver = metadata.label
+                    if (metadata.isKnownSwitchIncompatibleRelease) {
+                        emulationSettings.gpuDriver = EmulationSettings.SYSTEM_GPU_DRIVER
+                        adapter.selectAndNotify(0)
+                        Snackbar.make(binding.root, R.string.gpu_driver_turnip_r8_fallback, Snackbar.LENGTH_LONG).show()
+                    } else {
+                        emulationSettings.gpuDriver = metadata.label
+                    }
                 }
             })
 
             if (emulationSettings.gpuDriver == metadata.label) {
-                adapter.selectedPosition = index + 1 // Add 1 to account for the system driver entry
+                if (metadata.isKnownSwitchIncompatibleRelease) {
+                    emulationSettings.gpuDriver = EmulationSettings.SYSTEM_GPU_DRIVER
+                    adapter.selectedPosition = 0
+                    selectedUnsafeDriverFallback = true
+                } else {
+                    adapter.selectedPosition = index + 1 // Add 1 to account for the system driver entry
+                }
             }
         }
 
         adapter.setItems(items)
+        if (selectedUnsafeDriverFallback)
+            Snackbar.make(binding.root, R.string.gpu_driver_turnip_r8_fallback, Snackbar.LENGTH_LONG).show()
     }
 
     override fun onCreate(savedInstanceState : Bundle?) {

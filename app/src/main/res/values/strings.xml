@@ -169,6 +169,7 @@
     <string name="delete_gpu_driver">Delete this GPU driver</string>
     <string name="system_driver">System Driver</string>
     <string name="system_driver_desc">The GPU driver provided by your system</string>
+    <string name="gpu_driver_turnip_r8_fallback">This Turnip v26.0.0 R8 release is reported to render very incorrectly in Switch emulators. Strato selected the system driver instead.</string>
     <string name="install">Install</string>
     <string name="gpu_driver_install_inprogress">Installing the GPU driver…</string>
     <string name="gpu_driver_install_success">GPU driver installed successfully</string>

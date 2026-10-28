@@ -33,6 +33,14 @@ data class GpuDriverMetadata(
 
     val label get() = "${name}-v${packageVersion}"
 
+    /**
+     * This Turnip release's notes warn that Switch emulators may render very buggy graphics.
+     */
+    val isKnownSwitchIncompatibleRelease: Boolean
+        get() = name.contains("Turnip", ignoreCase = true) &&
+                packageVersion.contains("26.0.0") &&
+                packageVersion.contains("R8", ignoreCase = true)
+
     companion object {
         private const val SCHEMA_VERSION_V1 = 1
 
