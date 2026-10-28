@@ -31,6 +31,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Apply pinned shader compiler patches
+        run: bash scripts/apply_shader_compiler_patches.sh
+
       - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
@@ -83,6 +86,7 @@ jobs:
 
       - name: Run deterministic native regression tests
         run: |
+          python3 tests/test_adreno_gather_workaround.py
           python3 tests/test_memory_attributes.py
           python3 tests/test_memory_reclaim.py
           python3 tests/test_frame_pacing.py

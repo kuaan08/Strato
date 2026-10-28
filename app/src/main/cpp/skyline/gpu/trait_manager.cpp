@@ -237,6 +237,7 @@ namespace skyline::gpu {
                 relaxedRenderPassCompatibility = true; // Adreno drivers support relaxed render pass compatibility rules
                 brokenPushDescriptors = true;
                 brokenSpirvPositionInput = true;
+                needsGatherSubpixelOffset = true;
                 brokenSpirvAccessChainOpt = true;
 
                 if (deviceProperties.driverVersion < VK_MAKE_VERSION(512, 600, 0))
@@ -257,6 +258,7 @@ namespace skyline::gpu {
             case vk::DriverId::eMesaTurnip: {
                 vkImageMutableFormatCostly = true; // Disables UBWC and forces linear tiling
                 adrenoRelaxedFormatAliasing = true;
+                needsGatherSubpixelOffset = true;
                 break;
             }
 
@@ -290,8 +292,8 @@ namespace skyline::gpu {
 
     std::string TraitManager::QuirkManager::Summary() {
         return fmt::format(
-            "\n* Needs Individual Texture Binding Writes: {}\n* VkImage Mutable Format is costly: {}\n* Adreno Relaxed Format Aliasing: {}\n* Adreno Broken Format Reporting: {}\n* Relaxed Render Pass Compatibility: {}\n* Max Subpass Count: {}\n* Max Global Queue Priority: {}",
-            needsIndividualTextureBindingWrites, vkImageMutableFormatCostly, adrenoRelaxedFormatAliasing, adrenoBrokenFormatReport, relaxedRenderPassCompatibility, maxSubpassCount, vk::to_string(maxGlobalPriority)
+            "\n* Needs Individual Texture Binding Writes: {}\n* Needs Gather Subpixel Offset: {}\n* VkImage Mutable Format is costly: {}\n* Adreno Relaxed Format Aliasing: {}\n* Adreno Broken Format Reporting: {}\n* Relaxed Render Pass Compatibility: {}\n* Max Subpass Count: {}\n* Max Global Queue Priority: {}",
+            needsIndividualTextureBindingWrites, needsGatherSubpixelOffset, vkImageMutableFormatCostly, adrenoRelaxedFormatAliasing, adrenoBrokenFormatReport, relaxedRenderPassCompatibility, maxSubpassCount, vk::to_string(maxGlobalPriority)
         );
     }
 

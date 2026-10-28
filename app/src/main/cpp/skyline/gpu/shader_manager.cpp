@@ -132,6 +132,7 @@ namespace skyline::gpu {
             .warp_size_potentially_larger_than_guest = TegraX1WarpSize < traits.subgroupSize,
             .lower_left_origin_mode = false,
             .need_declared_frag_colors = false,
+            .need_gather_subpixel_offset = traits.quirks.needsGatherSubpixelOffset,
             .has_broken_spirv_position_input = traits.quirks.brokenSpirvPositionInput,
             .has_broken_spirv_subgroup_mask_vector_extract_dynamic = traits.quirks.brokenSubgroupMaskExtractDynamic,
             .has_broken_spirv_subgroup_shuffle = traits.quirks.brokenSubgroupShuffle,

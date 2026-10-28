@@ -1,0 +1,47 @@
+diff --git a/backend/spirv/emit_spirv_image.cpp b/backend/spirv/emit_spirv_image.cpp
+index 68ea763..17edf63 100644
+--- a/backend/spirv/emit_spirv_image.cpp
++++ b/backend/spirv/emit_spirv_image.cpp
+@@ -2 +2,2 @@
+-// SPDX-License-Identifier: GPL-2.0-or-later
++// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
++// SPDX-License-Identifier: GPL-3.0-or-later
+@@ -257,0 +259,23 @@ Id BitTest(EmitContext& ctx, Id mask, Id bit) {
++
++Id ImageGatherSubpixelOffset(EmitContext& ctx, const IR::TextureInstInfo& info, Id texture,
++                             Id coords) {
++    // Nudge normalized coordinates by 1/512 texel to match Maxwell's gather rounding.
++    const auto calculate_coords{[&](size_t dim) {
++        const Id nudge{ctx.Const(0x1p-9f)};
++        const Id image_size{ctx.OpImageQuerySizeLod(ctx.U32[dim], texture, ctx.u32_zero_value)};
++        Id offset{dim == 2 ? ctx.ConstantComposite(ctx.F32[dim], nudge, nudge)
++                           : ctx.ConstantComposite(ctx.F32[dim], nudge, nudge, ctx.f32_zero_value)};
++        offset = ctx.OpFDiv(ctx.F32[dim], offset, ctx.OpConvertUToF(ctx.F32[dim], image_size));
++        return ctx.OpFAdd(ctx.F32[dim], coords, offset);
++    }};
++    switch (info.type) {
++    case TextureType::Color2D:
++    case TextureType::Color2DRect:
++        return calculate_coords(2);
++    case TextureType::ColorArray2D:
++    case TextureType::ColorCube:
++        return calculate_coords(3);
++    default:
++        return coords;
++    }
++}
+@@ -419,0 +444,3 @@ Id EmitImageGather(EmitContext& ctx, IR::Inst* inst, const IR::Value& index, Id
++    if (ctx.profile.need_gather_subpixel_offset) {
++        coords = ImageGatherSubpixelOffset(ctx, info, TextureImage(ctx, info, index), coords);
++    }
+@@ -428,0 +456,3 @@ Id EmitImageGatherDref(EmitContext& ctx, IR::Inst* inst, const IR::Value& index,
++    if (ctx.profile.need_gather_subpixel_offset) {
++        coords = ImageGatherSubpixelOffset(ctx, info, TextureImage(ctx, info, index), coords);
++    }
+diff --git a/profile.h b/profile.h
+index 59dc316..bea6575 100644
+--- a/profile.h
++++ b/profile.h
+@@ -55,0 +56,2 @@ struct Profile {
++    /// Applies a 1/512-texel coordinate nudge for drivers with mismatched gather rounding.
++    bool need_gather_subpixel_offset{};
