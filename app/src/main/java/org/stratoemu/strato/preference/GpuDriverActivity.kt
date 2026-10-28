@@ -115,7 +115,7 @@ class GpuDriverActivity : AppCompatActivity() {
                 onClick = {
                     if (metadata.isKnownSwitchIncompatibleRelease) {
                         emulationSettings.gpuDriver = EmulationSettings.SYSTEM_GPU_DRIVER
-                        adapter.selectAndNotify(0)
+                        this@GpuDriverActivity.adapter.selectAndNotify(0)
                         Snackbar.make(binding.root, R.string.gpu_driver_turnip_r8_fallback, Snackbar.LENGTH_LONG).show()
                     } else {
                         emulationSettings.gpuDriver = metadata.label
