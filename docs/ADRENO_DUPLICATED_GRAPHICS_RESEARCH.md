@@ -2,7 +2,7 @@
 
 **Data:** 27 de outubro de 2026
 
-**Escopo:** captura de *Kill la Kill IF*, log que a acompanhou, ZIPs `s.zip` e `to.zip`, comparação com Lemon e outros emuladores de Switch. Nenhum APK intermediário foi criado; a build final será gerada após a proteção contra o driver identificado.
+**Escopo:** captura de *Kill la Kill IF*, log que a acompanhou, ZIPs `s.zip` e `to.zip`, comparação com Lemon e outros emuladores de Switch. Nenhum APK intermediário foi criado; o APK final foi produzido uma vez pelo Actions no commit `34d36d2b` [9].
 
 ## Captura original e driver selecionado
 
@@ -48,7 +48,9 @@ No Strato, o `ShaderCache` já armazena o binário guest e o cache persistente r
 
 ## Próxima verificação necessária
 
-O primeiro teste do APK final deve repetir a mesma cena com o driver do sistema, sem selecionar o Turnip v26.0.0 R8. Se o ghosting persistir nesse cenário, ainda será preciso capturar screenshot e log juntos para separar corrupção já presente no framebuffer guest de problemas na composição Android; não há evidência para aplicar os workarounds Lemon de geometry shader ou gather a esse jogo.
+O Actions compilou o código e executou os testes Android e nativos no commit final [9], mas isso não valida o resultado visual no aparelho. O teste no POCO deve repetir a mesma cena com o driver do sistema, sem selecionar o Turnip v26.0.0 R8. Se o ghosting persistir, será preciso capturar nova imagem e log juntos para separar corrupção já presente no framebuffer guest de problemas na composição Android; não há evidência para aplicar os workarounds Lemon de geometry shader ou gather a esse jogo.
+
+O artefato `Strato-Adreno-APK` desse run tem 28.529.006 bytes e SHA-256 `88b8ed0f2b1dcfffb38894c72e8d4ba2f0f041e690003b75d19ad31e8152d85d`; o ZIP interno foi verificado após o download.
 
 ## Referências
 
@@ -60,3 +62,4 @@ O primeiro teste do APK final deve repetir a mesma cena com o driver do sistema,
 [6]: https://github.com/Ghael-V/Lemon-Project/blob/v1.2.0/src/video_core/renderer_vulkan/vk_fragment_translation_cache.h "Lemon v1.2.0 fragment translation cache"
 [7]: https://www.mi.com/ae-en/product/poco-x5-pro-5g/specs/ "Xiaomi POCO X5 Pro 5G specifications"
 [8]: https://github.com/K11MCH1/AdrenoToolsDrivers/releases/tag/v26.0.0-rc08 "K11MCH1 Turnip v26.0.0 R8 release notes"
+[9]: https://github.com/kuaan08/Strato/actions/runs/40611481048 "Successful final Strato Adreno Actions build"
